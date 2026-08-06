@@ -25,6 +25,7 @@
     <button class="primary-btn" data-module="equipe">Equipe</button>
     <button class="primary-btn" data-module="prospeccao">Prospecção</button>
     <button class="primary-btn" data-module="produtos">Produtos</button>
+    <button class="primary-btn" data-module="cursos">Cursos</button>
   </nav>
 
   <nav class="tabs" id="tabsVerificacao">
@@ -43,8 +44,14 @@
 
   <nav class="tabs hidden" id="tabsProdutos">
     <button class="tab-btn active" data-subtab="registrar">Registrar vendas</button>
+    <button class="tab-btn" data-subtab="metas">Metas do mês</button>
     <button class="tab-btn" data-subtab="vendasmes">Vendas do mês</button>
     <button class="tab-btn" data-subtab="ranking">Ranking</button>
+  </nav>
+
+  <nav class="tabs hidden" id="tabsCursos">
+    <button class="tab-btn active" data-subtab="equipe">Progresso da equipe</button>
+    <button class="tab-btn" data-subtab="catalogo">Cursos por cargo</button>
   </nav>
 </header>
 
@@ -205,6 +212,16 @@
       </div>
     </section>
 
+    <section class="tab-panel hidden" id="prod-metas">
+      <h2>Metas mensais de produtos</h2>
+      <p class="muted">Todo mês os Correios estipulam metas de venda para produtos específicos. Defina a meta de cada produto e acompanhe o progresso das vendas já registradas.</p>
+      <div class="filter-row">
+        <input type="month" id="mesMetas">
+      </div>
+      <div id="metasList"></div>
+      <button class="save-btn" id="btnSalvarMetas" style="margin-top:14px;">Salvar metas do mês</button>
+    </section>
+
     <section class="tab-panel hidden" id="prod-vendasmes">
       <h2>Vendas do mês</h2>
       <div class="filter-row">
@@ -222,6 +239,27 @@
         <input type="month" id="mesRankingProdutos">
       </div>
       <div id="rankingProdutosBody"></div>
+    </section>
+
+  </section>
+
+  <!-- ===== MÓDULO: CURSOS OBRIGATÓRIOS ===== -->
+  <section class="module hidden" id="module-cursos">
+
+    <section class="tab-panel" id="curso-equipe">
+      <h2>Progresso de capacitação</h2>
+      <p class="muted">Cursos preliminares e complementares obrigatórios, conforme o cargo de cada funcionário. Auxiliares Gerais e Estagiários não possuem trilha de capacitação obrigatória.</p>
+      <div id="cursosEquipeList"></div>
+    </section>
+
+    <section class="tab-panel hidden" id="curso-catalogo">
+      <h2>Cursos obrigatórios por cargo</h2>
+      <div class="filter-row">
+        <select id="filtroCargoCurso">
+          <option value="">Todos os cargos</option>
+        </select>
+      </div>
+      <div id="cursosCatalogoList"></div>
     </section>
 
   </section>

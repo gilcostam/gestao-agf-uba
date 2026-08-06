@@ -88,8 +88,8 @@ function setRecord(dateStr, data) {
   saveRecords(records);
 }
 
-/* ===== Navegação por módulos (Verificação / Equipe / Prospecção / Produtos) ===== */
-const MODULES = ['verificacao', 'equipe', 'prospeccao', 'produtos'];
+/* ===== Navegação por módulos (Verificação / Equipe / Prospecção / Produtos / Cursos) ===== */
+const MODULES = ['verificacao', 'equipe', 'prospeccao', 'produtos', 'cursos'];
 document.getElementById('primaryNav').addEventListener('click', (e) => {
   const btn = e.target.closest('.primary-btn');
   if (!btn) return;
@@ -104,10 +104,12 @@ function activateModule(name) {
   document.getElementById('tabsVerificacao').classList.toggle('hidden', name !== 'verificacao');
   document.getElementById('tabsProspeccao').classList.toggle('hidden', name !== 'prospeccao');
   document.getElementById('tabsProdutos').classList.toggle('hidden', name !== 'produtos');
+  document.getElementById('tabsCursos').classList.toggle('hidden', name !== 'cursos');
 
   if (name === 'equipe') renderEquipe();
   if (name === 'prospeccao') activateProspTab(currentProspTab);
   if (name === 'produtos') activateProdutosTab(currentProdTab);
+  if (name === 'cursos') activateCursosTab(currentCursoTab);
 }
 
 /* ===== Navegação por abas (módulo Verificação) ===== */
@@ -813,7 +815,7 @@ function vendaTotalItens(venda) {
   return Object.values(venda.itens || {}).reduce((sum, qty) => sum + qty, 0);
 }
 
-const PROD_TABS = ['registrar', 'vendasmes', 'ranking'];
+const PROD_TABS = ['registrar', 'metas', 'vendasmes', 'ranking'];
 let currentProdTab = 'registrar';
 document.getElementById('tabsProdutos').addEventListener('click', (e) => {
   const btn = e.target.closest('.tab-btn');
@@ -828,6 +830,7 @@ function activateProdutosTab(name) {
     document.querySelector(`#tabsProdutos .tab-btn[data-subtab="${t}"]`).classList.toggle('active', t === name);
   });
   if (name === 'registrar') renderRegistrarVendas();
+  if (name === 'metas') renderMetas();
   if (name === 'vendasmes') renderVendasMes();
   if (name === 'ranking') renderRankingProdutos();
 }
@@ -883,6 +886,75 @@ function renderRegistrarVendas() {
     }
     saveVendas(list);
     alert('Vendas registradas com sucesso!');
+  };
+}
+
+/* ===== Aba: Metas mensais de produtos ===== */
+const METAS_STORAGE_KEY = 'sappp_metas_v1';
+function loadMetas() {
+  try { return JSON.parse(localStorage.getItem(METAS_STORAGE_KEY)) || {}; }
+  catch (e) { return {}; }
+}
+function saveMetasData(data) {
+  localStorage.setItem(METAS_STORAGE_KEY, JSON.stringify(data));
+}
+
+function renderMetas() {
+  const mesInput = document.getElementById('mesMetas');
+  if (!mesInput.value) {
+    const d = new Date();
+    mesInput.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+  mesInput.onchange = renderMetasInner;
+  renderMetasInner();
+}
+
+function renderMetasInner() {
+  const mes = document.getElementById('mesMetas').value;
+  const metas = loadMetas();
+  const metasDoMes = metas[mes] || {};
+
+  const vendidoPorProduto = {};
+  loadVendas().filter(v => v.data && v.data.startsWith(mes)).forEach(v => {
+    Object.entries(v.itens || {}).forEach(([prodId, qty]) => {
+      vendidoPorProduto[prodId] = (vendidoPorProduto[prodId] || 0) + qty;
+    });
+  });
+
+  const container = document.getElementById('metasList');
+  container.innerHTML = PRODUCTS.map(p => {
+    const meta = metasDoMes[p.id] || 0;
+    const vendido = vendidoPorProduto[p.id] || 0;
+    const pct = meta > 0 ? Math.min(100, Math.round((vendido / meta) * 100)) : 0;
+    const atingiu = meta > 0 && vendido >= meta;
+    return `
+      <div class="list-item">
+        <div class="list-item-top">
+          <span class="cat-pill">${escapeHtml(p.nome)}</span>
+          <span class="pts-tag">${vendido} vendido(s)</span>
+        </div>
+        <label class="field-label">Meta do mês (unidades)</label>
+        <input type="number" min="0" class="meta-qty-input" data-produto="${p.id}" value="${meta || ''}" placeholder="Sem meta definida">
+        ${meta > 0 ? `
+        <div class="bar-row">
+          <div class="bar-label"><span>Progresso</span><span>${pct}%${atingiu ? ' · meta atingida ✔' : ''}</span></div>
+          <div class="bar-track"><div class="bar-fill" style="width:${pct}%; background:${atingiu ? 'var(--verde)' : 'var(--azul)'}"></div></div>
+        </div>` : '<p class="muted" style="margin:6px 0 0;">Defina uma meta para acompanhar o progresso.</p>'}
+      </div>
+    `;
+  }).join('');
+
+  document.getElementById('btnSalvarMetas').onclick = () => {
+    const metasAtualizadas = {};
+    document.querySelectorAll('.meta-qty-input').forEach(inp => {
+      const qty = Number(inp.value) || 0;
+      if (qty > 0) metasAtualizadas[inp.dataset.produto] = qty;
+    });
+    const all = loadMetas();
+    all[mes] = metasAtualizadas;
+    saveMetasData(all);
+    alert('Metas salvas com sucesso!');
+    renderMetasInner();
   };
 }
 
@@ -1010,6 +1082,147 @@ function renderRankingProdutosInner() {
   }
 
   document.getElementById('rankingProdutosBody').innerHTML = html;
+}
+
+/* ===================================================================
+   MÓDULO: CURSOS OBRIGATÓRIOS (progresso de capacitação por funcionário)
+   =================================================================== */
+const CURSOS_PROGRESSO_KEY = 'sappp_cursos_progresso_v1';
+const TIPO_LABELS = { preliminar: 'Preliminares (antes de assumir a função)', complementar: 'Complementares (até 90 dias)' };
+
+function loadCursosProgresso() {
+  try { return JSON.parse(localStorage.getItem(CURSOS_PROGRESSO_KEY)) || {}; }
+  catch (e) { return {}; }
+}
+function saveCursosProgresso(data) {
+  localStorage.setItem(CURSOS_PROGRESSO_KEY, JSON.stringify(data));
+}
+function cursosDoCargo(cargo) {
+  return CURSOS_POR_CARGO[cargo] || [];
+}
+
+const CURSO_TABS = ['equipe', 'catalogo'];
+let currentCursoTab = 'equipe';
+document.getElementById('tabsCursos').addEventListener('click', (e) => {
+  const btn = e.target.closest('.tab-btn');
+  if (!btn) return;
+  activateCursosTab(btn.dataset.subtab);
+});
+
+function activateCursosTab(name) {
+  currentCursoTab = name;
+  CURSO_TABS.forEach(t => {
+    document.getElementById('curso-' + t).classList.toggle('hidden', t !== name);
+    document.querySelector(`#tabsCursos .tab-btn[data-subtab="${t}"]`).classList.toggle('active', t === name);
+  });
+  if (name === 'equipe') renderCursosEquipe();
+  if (name === 'catalogo') renderCursosCatalogo();
+}
+
+/* ===== Aba: Progresso da equipe ===== */
+function renderCursosEquipe() {
+  const funcionarios = loadFuncionarios()
+    .filter(f => f.ativo && cursosDoCargo(f.cargo).length > 0)
+    .slice()
+    .sort((a, b) => a.nome.localeCompare(b.nome));
+  const progresso = loadCursosProgresso();
+  const container = document.getElementById('cursosEquipeList');
+
+  if (funcionarios.length === 0) {
+    container.innerHTML = '<div class="empty-state">Nenhum funcionário com capacitação obrigatória cadastrado. Auxiliares Gerais e Estagiários não possuem cursos obrigatórios.</div>';
+    return;
+  }
+
+  container.innerHTML = funcionarios.map(f => {
+    const cursos = cursosDoCargo(f.cargo);
+    const feitos = progresso[f.id] || {};
+    const concluidos = cursos.filter(c => feitos[c.id]).length;
+    const pct = Math.round((concluidos / cursos.length) * 100);
+    const checklistHtml = ['preliminar', 'complementar'].map(tipo => {
+      const doTipo = cursos.filter(c => c.tipo === tipo);
+      if (doTipo.length === 0) return '';
+      return `<div class="curso-tipo-title">${TIPO_LABELS[tipo]}</div>` +
+        doTipo.map(c => `
+          <label class="curso-check-row">
+            <input type="checkbox" data-func="${f.id}" data-curso="${c.id}" ${feitos[c.id] ? 'checked' : ''}>
+            <span>${escapeHtml(c.nome)}</span>
+            <span class="curso-ch">${c.ch}h</span>
+          </label>
+        `).join('');
+    }).join('');
+
+    return `
+      <div class="list-item">
+        <div class="list-item-top">
+          <span class="cargo-badge">${escapeHtml(f.cargo)}</span>
+          <span class="pts-tag">${concluidos}/${cursos.length} concluídos</span>
+        </div>
+        <div class="list-item-question">${escapeHtml(f.nome)}</div>
+        <div class="bar-row">
+          <div class="bar-label"><span>Progresso da capacitação</span><span>${pct}%</span></div>
+          <div class="bar-track"><div class="bar-fill" style="width:${pct}%; background:${pct === 100 ? 'var(--verde)' : 'var(--azul)'}"></div></div>
+        </div>
+        <button class="link-btn" data-action="toggle-cursos" data-id="${f.id}">Ver / marcar cursos</button>
+        <div class="curso-checklist hidden" id="cursoChecklist-${f.id}">${checklistHtml}</div>
+      </div>
+    `;
+  }).join('');
+
+  container.querySelectorAll('[data-action="toggle-cursos"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.getElementById('cursoChecklist-' + btn.dataset.id).classList.toggle('hidden');
+    });
+  });
+  container.querySelectorAll('.curso-checklist input[type="checkbox"]').forEach(chk => {
+    chk.addEventListener('change', () => {
+      const funcId = chk.dataset.func;
+      const cursoId = chk.dataset.curso;
+      const data = loadCursosProgresso();
+      data[funcId] = data[funcId] || {};
+      if (chk.checked) data[funcId][cursoId] = true;
+      else delete data[funcId][cursoId];
+      saveCursosProgresso(data);
+      renderCursosEquipe();
+      // reabre o checklist do funcionário editado após o re-render
+      document.getElementById('cursoChecklist-' + funcId).classList.remove('hidden');
+    });
+  });
+}
+
+/* ===== Aba: Cursos por cargo (catálogo de referência) ===== */
+function renderCursosCatalogo() {
+  const select = document.getElementById('filtroCargoCurso');
+  if (select.options.length <= 1) {
+    select.innerHTML = '<option value="">Todos os cargos</option>' +
+      Object.keys(CURSOS_POR_CARGO).map(c => `<option value="${c}">${c}</option>`).join('');
+  }
+  select.onchange = renderCursosCatalogoInner;
+  renderCursosCatalogoInner();
+}
+
+function renderCursosCatalogoInner() {
+  const cargoF = document.getElementById('filtroCargoCurso').value;
+  const cargos = cargoF ? [cargoF] : Object.keys(CURSOS_POR_CARGO);
+  const container = document.getElementById('cursosCatalogoList');
+
+  let html = '';
+  cargos.forEach(cargo => {
+    const cursos = CURSOS_POR_CARGO[cargo];
+    const totalCh = cursos.reduce((s, c) => s + c.ch, 0);
+    html += `<div class="li-cat-title">${escapeHtml(cargo)} — ${cursos.length} cursos, ${totalCh}h</div>`;
+    ['preliminar', 'complementar'].forEach(tipo => {
+      const doTipo = cursos.filter(c => c.tipo === tipo);
+      if (doTipo.length === 0) return;
+      html += `<div class="curso-tipo-title">${TIPO_LABELS[tipo]}</div>`;
+      html += doTipo.map(c => `
+        <div class="li-item curso-catalogo-item">
+          <span>${escapeHtml(c.nome)}</span>
+          <span class="curso-ch">${c.ch}h</span>
+        </div>
+      `).join('');
+    });
+  });
+  container.innerHTML = html || '<div class="empty-state">Nenhum curso encontrado.</div>';
 }
 
 /* ===== Utils ===== */

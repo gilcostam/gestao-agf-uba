@@ -547,3 +547,58 @@ textarea { resize: vertical; min-height: 70px; }
 @media (max-width: 480px) {
   .status-row { flex-direction: column; }
 }
+
+/* Metas de produtos */
+.meta-qty-input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--cinza-borda);
+  border-radius: 8px;
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+/* Cursos obrigatórios */
+.curso-tipo-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--azul);
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  margin: 14px 0 8px;
+}
+
+.curso-checklist {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--cinza-borda);
+}
+
+.curso-check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  padding: 6px 0;
+  cursor: pointer;
+}
+.curso-check-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  accent-color: var(--verde);
+}
+.curso-check-row span:first-of-type { flex: 1; }
+
+.curso-ch {
+  font-size: 11px;
+  color: var(--texto-suave);
+  white-space: nowrap;
+}
+
+.curso-catalogo-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
