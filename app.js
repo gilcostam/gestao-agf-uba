@@ -89,7 +89,7 @@ function setRecord(dateStr, data) {
 }
 
 /* ===== Navegação por módulos (Verificação / Equipe / Prospecção / Produtos / Cursos) ===== */
-const MODULES = ['verificacao', 'equipe', 'prospeccao', 'produtos', 'cursos'];
+const MODULES = ['verificacao', 'equipe', 'prospeccao', 'produtos', 'cursos', 'comissoes'];
 document.getElementById('primaryNav').addEventListener('click', (e) => {
   const btn = e.target.closest('.primary-btn');
   if (!btn) return;
@@ -110,6 +110,7 @@ function activateModule(name) {
   if (name === 'prospeccao') activateProspTab(currentProspTab);
   if (name === 'produtos') activateProdutosTab(currentProdTab);
   if (name === 'cursos') activateCursosTab(currentCursoTab);
+  if (name === 'comissoes') renderComissoes();
 }
 
 /* ===== Navegação por abas (módulo Verificação) ===== */
@@ -1223,6 +1224,106 @@ function renderCursosCatalogoInner() {
     });
   });
   container.innerHTML = html || '<div class="empty-state">Nenhum curso encontrado.</div>';
+}
+
+/* ===================================================================
+   MÓDULO: COMISSÕES (contratos assinados + liderança no ranking de produtos)
+   =================================================================== */
+const COMISSAO_CONTRATO_VALOR = 30;
+const COMISSAO_LIDER_PRODUTOS_VALOR = 35;
+
+function formatBRL(valor) {
+  return (valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function calcularComissoes() {
+  const funcionarios = loadFuncionarios();
+  const leads = loadLeads();
+  const vendas = loadVendas();
+
+  const contratosPorFuncionario = {};
+  leads.forEach(l => {
+    (l.historico || []).forEach(h => {
+      if (h.etapa === 'contrato_assinado') {
+        contratosPorFuncionario[l.funcionarioId] = (contratosPorFuncionario[l.funcionarioId] || 0) + 1;
+      }
+    });
+  });
+
+  // Para cada mês com vendas registradas, quem liderou o ranking de pontos ganha a comissão daquele mês.
+  // Em caso de empate no topo, a comissão do mês é dividida entre os líderes empatados.
+  const mesesComVenda = [...new Set(vendas.map(v => (v.data || '').slice(0, 7)).filter(Boolean))];
+  const comissaoProdutosPorFuncionario = {};
+  const mesesLideradosPorFuncionario = {};
+  mesesComVenda.forEach(mes => {
+    const porFunc = {};
+    vendas.filter(v => v.data && v.data.startsWith(mes)).forEach(v => {
+      if (!porFunc[v.funcionarioId]) porFunc[v.funcionarioId] = 0;
+      porFunc[v.funcionarioId] += vendaTotalPontos(v);
+    });
+    const entries = Object.entries(porFunc).filter(([, pontos]) => pontos > 0);
+    if (entries.length === 0) return;
+    const maxPontos = Math.max(...entries.map(([, pontos]) => pontos));
+    const lideres = entries.filter(([, pontos]) => pontos === maxPontos).map(([id]) => id);
+    const comissaoPorLider = COMISSAO_LIDER_PRODUTOS_VALOR / lideres.length;
+    lideres.forEach(id => {
+      comissaoProdutosPorFuncionario[id] = (comissaoProdutosPorFuncionario[id] || 0) + comissaoPorLider;
+      mesesLideradosPorFuncionario[id] = (mesesLideradosPorFuncionario[id] || 0) + 1;
+    });
+  });
+
+  return funcionarios.map(f => {
+    const contratos = contratosPorFuncionario[f.id] || 0;
+    const mesesLiderados = mesesLideradosPorFuncionario[f.id] || 0;
+    const comissaoContratos = contratos * COMISSAO_CONTRATO_VALOR;
+    const comissaoProdutos = comissaoProdutosPorFuncionario[f.id] || 0;
+    return {
+      funcionario: f,
+      contratos,
+      mesesLiderados,
+      comissaoContratos,
+      comissaoProdutos,
+      total: comissaoContratos + comissaoProdutos
+    };
+  })
+  .filter(r => r.total > 0)
+  .sort((a, b) => b.total - a.total);
+}
+
+function renderComissoes() {
+  const dados = calcularComissoes();
+  const totalContratos = dados.reduce((s, r) => s + r.comissaoContratos, 0);
+  const totalProdutos = dados.reduce((s, r) => s + r.comissaoProdutos, 0);
+  const totalGeral = totalContratos + totalProdutos;
+
+  let html = `
+    <div class="stat-grid">
+      <div class="stat-box"><div class="num" style="color:var(--verde)">${formatBRL(totalGeral)}</div><div class="lbl">Comissão total da equipe</div></div>
+      <div class="stat-box"><div class="num">${formatBRL(totalContratos)}</div><div class="lbl">De contratos assinados</div></div>
+      <div class="stat-box"><div class="num">${formatBRL(totalProdutos)}</div><div class="lbl">De liderança em produtos</div></div>
+    </div>
+  `;
+
+  if (dados.length === 0) {
+    html += '<div class="empty-state">Nenhuma comissão registrada ainda.</div>';
+  } else {
+    const medals = ['🥇', '🥈', '🥉'];
+    html += dados.map((r, i) => `
+      <div class="rank-row">
+        <div class="rank-pos">${medals[i] || (i + 1)}</div>
+        <div class="rank-info">
+          <div class="rank-name">${escapeHtml(r.funcionario.nome)}</div>
+          <div class="rank-cargo">${escapeHtml(r.funcionario.cargo)} · ${r.contratos} contrato(s) assinado(s) · ${r.mesesLiderados} mês(es) líder em produtos</div>
+        </div>
+        <div>
+          <div class="rank-count" style="color:var(--verde)">${formatBRL(r.total)}</div>
+          <div class="rank-count-lbl">comissão total</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  document.getElementById('comissoesBody').innerHTML = html;
 }
 
 /* ===== Utils ===== */
