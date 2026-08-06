@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestão AGF Centro de Ubá</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="brand-mark">✓</span>
+      <div>
+        <h1>Gestão AGF Centro de Ubá</h1>
+        <p>Verificação, equipe e prospecção</p>
+      </div>
+    </div>
+    <div class="today-date" id="todayDateLabel"></div>
+  </div>
+
+  <nav class="primary-nav" id="primaryNav">
+    <button class="primary-btn active" data-module="verificacao">Verificação Diária</button>
+    <button class="primary-btn" data-module="equipe">Equipe</button>
+    <button class="primary-btn" data-module="prospeccao">Prospecção</button>
+    <button class="primary-btn" data-module="produtos">Produtos</button>
+  </nav>
+
+  <nav class="tabs" id="tabsVerificacao">
+    <button class="tab-btn active" data-tab="hoje">Hoje</button>
+    <button class="tab-btn" data-tab="pendencias">Pendências <span class="badge" id="pendCount"></span></button>
+    <button class="tab-btn" data-tab="historico">Histórico</button>
+    <button class="tab-btn" data-tab="relatorio">Relatório</button>
+    <button class="tab-btn" data-tab="lista">Lista completa</button>
+  </nav>
+
+  <nav class="tabs hidden" id="tabsProspeccao">
+    <button class="tab-btn active" data-subtab="leads">Leads</button>
+    <button class="tab-btn" data-subtab="novolead">Novo Lead</button>
+    <button class="tab-btn" data-subtab="ranking">Ranking</button>
+  </nav>
+
+  <nav class="tabs hidden" id="tabsProdutos">
+    <button class="tab-btn active" data-subtab="registrar">Registrar vendas</button>
+    <button class="tab-btn" data-subtab="vendasmes">Vendas do mês</button>
+    <button class="tab-btn" data-subtab="ranking">Ranking</button>
+  </nav>
+</header>
+
+<main class="container">
+
+  <!-- ===== MÓDULO: VERIFICAÇÃO DIÁRIA ===== -->
+  <section class="module" id="module-verificacao">
+
+    <section class="tab-panel" id="tab-hoje">
+      <div class="card" id="hojeCard"></div>
+    </section>
+
+    <section class="tab-panel hidden" id="tab-pendencias">
+      <h2>Não conformidades em aberto</h2>
+      <p class="muted">Itens marcados como "Não conforme" que ainda precisam de correção.</p>
+      <div id="pendList"></div>
+    </section>
+
+    <section class="tab-panel hidden" id="tab-historico">
+      <h2>Histórico de verificações</h2>
+      <div class="filter-row">
+        <select id="filtroCategoria">
+          <option value="">Todas as categorias</option>
+          <option value="ATENDIMENTO AO CLIENTE">Atendimento ao Cliente</option>
+          <option value="INTERNO">Interno</option>
+          <option value="ORGANIZAÇÃO">Organização</option>
+        </select>
+        <select id="filtroStatus">
+          <option value="">Todos os status</option>
+          <option value="conforme">Conforme</option>
+          <option value="nao_conforme">Não conforme</option>
+          <option value="na">Não se aplica</option>
+        </select>
+      </div>
+      <div id="histList"></div>
+    </section>
+
+    <section class="tab-panel hidden" id="tab-relatorio">
+      <h2>Relatório de conformidade</h2>
+      <div class="filter-row">
+        <select id="periodoRelatorio">
+          <option value="7">Últimos 7 dias</option>
+          <option value="30" selected>Últimos 30 dias</option>
+          <option value="90">Últimos 90 dias</option>
+          <option value="9999">Desde o início</option>
+        </select>
+      </div>
+      <div id="relatorioBody"></div>
+    </section>
+
+    <section class="tab-panel hidden" id="tab-lista">
+      <h2>Os 39 itens do checklist SAPPP</h2>
+      <p class="muted">Referência completa do Manual do Avaliador. Use para consulta a qualquer momento.</p>
+      <div class="filter-row">
+        <input type="text" id="buscaLista" placeholder="Buscar por palavra-chave...">
+      </div>
+      <div id="listaCompleta"></div>
+    </section>
+
+  </section>
+
+  <!-- ===== MÓDULO: EQUIPE ===== -->
+  <section class="module hidden" id="module-equipe">
+    <h2>Funcionários</h2>
+    <p class="muted">Cadastre a equipe da agência para vincular verificações e prospecções a cada pessoa.</p>
+
+    <div class="card">
+      <label class="field-label">Nome</label>
+      <input type="text" id="funcNome" placeholder="Nome completo">
+      <label class="field-label">Cargo</label>
+      <select id="funcCargo">
+        <option value="Gestor">Gestor</option>
+        <option value="Atendente">Atendente</option>
+        <option value="Expedidor">Expedidor</option>
+        <option value="Auxiliar Geral">Auxiliar Geral</option>
+        <option value="Estagiário">Estagiário</option>
+      </select>
+      <label class="field-label">Celular (opcional)</label>
+      <input type="text" id="funcCelular" placeholder="(00) 00000-0000">
+      <button class="save-btn" id="btnAddFuncionario">Cadastrar funcionário</button>
+    </div>
+
+    <h2 style="margin-top:24px;">Equipe cadastrada</h2>
+    <div class="filter-row">
+      <select id="filtroCargoEquipe">
+        <option value="">Todos os cargos</option>
+        <option value="Gestor">Gestor</option>
+        <option value="Atendente">Atendente</option>
+        <option value="Expedidor">Expedidor</option>
+        <option value="Auxiliar Geral">Auxiliar Geral</option>
+        <option value="Estagiário">Estagiário</option>
+      </select>
+    </div>
+    <div id="funcionariosList"></div>
+  </section>
+
+  <!-- ===== MÓDULO: PROSPECÇÃO ===== -->
+  <section class="module hidden" id="module-prospeccao">
+
+    <section class="tab-panel" id="sub-leads">
+      <h2>Leads em prospecção</h2>
+      <div class="filter-row">
+        <select id="filtroEtapaLead">
+          <option value="">Todas as etapas</option>
+          <option value="prospeccao">Prospecção</option>
+          <option value="envio_guilherme">Envio do lead para o Guilherme</option>
+          <option value="cadastro_correios">Cadastro nos Correios</option>
+          <option value="contrato_assinado">Contrato assinado</option>
+        </select>
+        <select id="filtroFuncionarioLead"></select>
+        <input type="text" id="buscaLead" placeholder="Buscar por razão social ou CNPJ...">
+      </div>
+      <div id="leadsList"></div>
+    </section>
+
+    <section class="tab-panel hidden" id="sub-novolead">
+      <h2>Novo lead</h2>
+      <div class="card">
+        <label class="field-label">Razão social</label>
+        <input type="text" id="leadRazaoSocial" placeholder="Nome da empresa">
+        <label class="field-label">CNPJ</label>
+        <input type="text" id="leadCnpj" placeholder="00.000.000/0000-00">
+        <label class="field-label">E-mail</label>
+        <input type="text" id="leadEmail" placeholder="contato@empresa.com">
+        <label class="field-label">Endereço</label>
+        <input type="text" id="leadEndereco" placeholder="Rua, número, bairro, cidade">
+        <label class="field-label">Celular</label>
+        <input type="text" id="leadCelular" placeholder="(00) 00000-0000">
+        <label class="field-label">Funcionário responsável</label>
+        <select id="leadFuncionario"></select>
+        <button class="save-btn" id="btnAddLead">Cadastrar lead</button>
+      </div>
+    </section>
+
+    <section class="tab-panel hidden" id="sub-ranking">
+      <h2>Ranking de prospecção</h2>
+      <div class="filter-row">
+        <input type="month" id="mesRanking">
+      </div>
+      <div id="rankingBody"></div>
+    </section>
+
+  </section>
+
+  <!-- ===== MÓDULO: PRODUTOS ===== -->
+  <section class="module hidden" id="module-produtos">
+
+    <section class="tab-panel" id="prod-registrar">
+      <h2>Registrar vendas do dia</h2>
+      <p class="muted">Selecione o funcionário e a data, e informe quantas unidades de cada produto foram vendidas.</p>
+      <div class="card">
+        <label class="field-label">Funcionário</label>
+        <select id="vendaFuncionario"></select>
+        <label class="field-label">Data</label>
+        <input type="date" id="vendaData">
+        <div id="vendaProdutosList" style="margin-top:14px;"></div>
+        <button class="save-btn" id="btnSalvarVendas">Salvar vendas do dia</button>
+      </div>
+    </section>
+
+    <section class="tab-panel hidden" id="prod-vendasmes">
+      <h2>Vendas do mês</h2>
+      <div class="filter-row">
+        <input type="month" id="mesVendas">
+        <select id="filtroFuncionarioVenda"></select>
+        <select id="filtroProdutoVenda"></select>
+      </div>
+      <div id="vendasMesList"></div>
+    </section>
+
+    <section class="tab-panel hidden" id="prod-ranking">
+      <h2>Ranking de vendas</h2>
+      <p class="muted">Pontuação total no mês, somando os pontos de cada produto vendido por funcionário.</p>
+      <div class="filter-row">
+        <input type="month" id="mesRankingProdutos">
+      </div>
+      <div id="rankingProdutosBody"></div>
+    </section>
+
+  </section>
+
+</main>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
