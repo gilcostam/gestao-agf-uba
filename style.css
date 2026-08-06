@@ -21,6 +21,24 @@ body {
   color: var(--texto);
 }
 
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background: var(--azul);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+body:not(.app-loading) .loading-overlay { display: none; }
+
+.loading-box {
+  color: var(--branco);
+  font-size: 15px;
+  font-weight: 700;
+}
+
 .topbar {
   background: var(--azul);
   color: var(--branco);

@@ -6,7 +6,11 @@
 <title>Gestão AGF Centro de Ubá</title>
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="app-loading">
+
+<div id="loadingOverlay" class="loading-overlay">
+  <div class="loading-box">Carregando dados...</div>
+</div>
 
 <header class="topbar">
   <div class="topbar-inner">
@@ -274,6 +278,7 @@
 
 </main>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="data.js"></script>
 <script src="app.js"></script>
 </body>

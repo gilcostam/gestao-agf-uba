@@ -7,6 +7,33 @@ const CAT_LABELS = {
   'ORGANIZAÇÃO': 'Organização'
 };
 
+/* ===== Supabase ===== */
+const SUPABASE_URL = 'https://wxbtuaxieeasnxismotz.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind4YnR1YXhpZWVhc254aXNtb3R6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwMzk3MjEsImV4cCI6MjEwMTYxNTcyMX0.WV7-_X5SrcCjRc724sj1eQShR7ijhRhjud_8_cl2iOs';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const MIGRATION_FLAG = 'sappp_migrated_to_supabase_v1';
+
+// Sincroniza uma coleção completa (mesmo padrão "carregar tudo -> mutar -> salvar tudo" usado no resto do app):
+// apaga no Supabase o que não está mais na lista local e faz upsert do restante.
+async function syncFullTable(table, rows, idField) {
+  try {
+    const { data: existing, error: fetchError } = await sb.from(table).select(idField);
+    if (fetchError) { console.error(`Erro ao consultar ${table} no Supabase:`, fetchError); return; }
+    const currentIds = new Set(rows.map(r => String(r[idField])));
+    const idsToDelete = (existing || []).map(r => r[idField]).filter(id => !currentIds.has(String(id)));
+    if (idsToDelete.length > 0) {
+      const { error: delError } = await sb.from(table).delete().in(idField, idsToDelete);
+      if (delError) console.error(`Erro ao excluir registros em ${table}:`, delError);
+    }
+    if (rows.length > 0) {
+      const { error: upsertError } = await sb.from(table).upsert(rows, { onConflict: idField });
+      if (upsertError) console.error(`Erro ao salvar em ${table}:`, upsertError);
+    }
+  } catch (e) {
+    console.error(`Falha ao sincronizar ${table} com Supabase:`, e);
+  }
+}
+
 /* ===== Rotina de rodízio (round-robin entre categorias, para variar todo dia) ===== */
 function buildRotationOrder() {
   const byCat = {};
@@ -69,15 +96,41 @@ function formatDateBR(str) {
 }
 
 /* ===== Persistência ===== */
+let _records = {};
 function loadRecords() {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
-  } catch (e) {
-    return {};
-  }
+  return _records;
 }
 function saveRecords(records) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+  _records = records;
+  syncFullTable('verificacoes', recordsToRows(records), 'data');
+}
+function recordsToRows(records) {
+  return Object.entries(records).map(([date, r]) => ({
+    data: date,
+    item_id: r.itemId,
+    status: r.status,
+    observacao: r.observacao || '',
+    plano_acao: r.planoAcao || '',
+    prazo: r.prazo || null,
+    resolved: !!r.resolved,
+    resolved_at: r.resolvedAt || null,
+    registrado_em: r.timestamp || new Date().toISOString()
+  }));
+}
+function rowsToRecords(rows) {
+  return rows.reduce((acc, row) => {
+    acc[row.data] = {
+      itemId: row.item_id,
+      status: row.status,
+      observacao: row.observacao || '',
+      planoAcao: row.plano_acao || '',
+      prazo: row.prazo || '',
+      resolved: !!row.resolved,
+      resolvedAt: row.resolved_at || null,
+      timestamp: row.registrado_em
+    };
+    return acc;
+  }, {});
 }
 function getRecord(dateStr) {
   return loadRecords()[dateStr] || null;
@@ -469,12 +522,33 @@ function genId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
+let _funcionarios = [];
 function loadFuncionarios() {
-  try { return JSON.parse(localStorage.getItem(FUNC_STORAGE_KEY)) || []; }
-  catch (e) { return []; }
+  return _funcionarios;
 }
 function saveFuncionarios(list) {
-  localStorage.setItem(FUNC_STORAGE_KEY, JSON.stringify(list));
+  _funcionarios = list;
+  syncFullTable('funcionarios', funcionariosToRows(list), 'id');
+}
+function funcionariosToRows(list) {
+  return list.map(f => ({
+    id: f.id,
+    nome: f.nome,
+    cargo: f.cargo,
+    celular: f.celular || '',
+    ativo: !!f.ativo,
+    criado_em: f.criadoEm
+  }));
+}
+function rowsToFuncionarios(rows) {
+  return rows.map(r => ({
+    id: r.id,
+    nome: r.nome,
+    cargo: r.cargo,
+    celular: r.celular || '',
+    ativo: !!r.ativo,
+    criadoEm: r.criado_em
+  }));
 }
 
 function renderEquipe() {
@@ -569,12 +643,41 @@ function etapaLabel(key) {
   return e ? e.label : key;
 }
 
+let _leads = [];
 function loadLeads() {
-  try { return JSON.parse(localStorage.getItem(LEADS_STORAGE_KEY)) || []; }
-  catch (e) { return []; }
+  return _leads;
 }
 function saveLeads(list) {
-  localStorage.setItem(LEADS_STORAGE_KEY, JSON.stringify(list));
+  _leads = list;
+  syncFullTable('leads', leadsToRows(list), 'id');
+}
+function leadsToRows(list) {
+  return list.map(l => ({
+    id: l.id,
+    razao_social: l.razaoSocial,
+    cnpj: l.cnpj || '',
+    email: l.email || '',
+    endereco: l.endereco || '',
+    celular: l.celular || '',
+    funcionario_id: l.funcionarioId || null,
+    etapa: l.etapa,
+    historico: l.historico || [],
+    criado_em: l.criadoEm
+  }));
+}
+function rowsToLeads(rows) {
+  return rows.map(r => ({
+    id: r.id,
+    razaoSocial: r.razao_social,
+    cnpj: r.cnpj || '',
+    email: r.email || '',
+    endereco: r.endereco || '',
+    celular: r.celular || '',
+    funcionarioId: r.funcionario_id || '',
+    etapa: r.etapa,
+    historico: r.historico || [],
+    criadoEm: r.criado_em
+  }));
 }
 
 const PROSP_TABS = ['leads', 'novolead', 'ranking'];
@@ -793,12 +896,33 @@ function renderRankingInner() {
    =================================================================== */
 const VENDAS_STORAGE_KEY = 'sappp_vendas_v1';
 
+let _vendas = [];
 function loadVendas() {
-  try { return JSON.parse(localStorage.getItem(VENDAS_STORAGE_KEY)) || []; }
-  catch (e) { return []; }
+  return _vendas;
 }
 function saveVendas(list) {
-  localStorage.setItem(VENDAS_STORAGE_KEY, JSON.stringify(list));
+  _vendas = list;
+  syncFullTable('vendas', vendasToRows(list), 'id');
+}
+function vendasToRows(list) {
+  return list.map(v => ({
+    id: v.id,
+    funcionario_id: v.funcionarioId,
+    data: v.data,
+    itens: v.itens || {},
+    criado_em: v.criadoEm || new Date().toISOString(),
+    atualizado_em: v.atualizadoEm || null
+  }));
+}
+function rowsToVendas(rows) {
+  return rows.map(r => ({
+    id: r.id,
+    funcionarioId: r.funcionario_id,
+    data: r.data,
+    itens: r.itens || {},
+    criadoEm: r.criado_em,
+    atualizadoEm: r.atualizado_em
+  }));
 }
 function produtoById(id) {
   return PRODUCTS.find(p => p.id === id);
@@ -892,12 +1016,22 @@ function renderRegistrarVendas() {
 
 /* ===== Aba: Metas mensais de produtos ===== */
 const METAS_STORAGE_KEY = 'sappp_metas_v1';
+let _metas = {};
 function loadMetas() {
-  try { return JSON.parse(localStorage.getItem(METAS_STORAGE_KEY)) || {}; }
-  catch (e) { return {}; }
+  return _metas;
 }
 function saveMetasData(data) {
-  localStorage.setItem(METAS_STORAGE_KEY, JSON.stringify(data));
+  _metas = data;
+  syncFullTable('metas', metasToRows(data), 'mes');
+}
+function metasToRows(data) {
+  return Object.entries(data).map(([mes, itens]) => ({ mes, itens: itens || {} }));
+}
+function rowsToMetas(rows) {
+  return rows.reduce((acc, r) => {
+    acc[r.mes] = r.itens || {};
+    return acc;
+  }, {});
 }
 
 function renderMetas() {
@@ -1091,12 +1225,22 @@ function renderRankingProdutosInner() {
 const CURSOS_PROGRESSO_KEY = 'sappp_cursos_progresso_v1';
 const TIPO_LABELS = { preliminar: 'Preliminares (antes de assumir a função)', complementar: 'Complementares (até 90 dias)' };
 
+let _cursosProgresso = {};
 function loadCursosProgresso() {
-  try { return JSON.parse(localStorage.getItem(CURSOS_PROGRESSO_KEY)) || {}; }
-  catch (e) { return {}; }
+  return _cursosProgresso;
 }
 function saveCursosProgresso(data) {
-  localStorage.setItem(CURSOS_PROGRESSO_KEY, JSON.stringify(data));
+  _cursosProgresso = data;
+  syncFullTable('cursos_progresso', cursosProgressoToRows(data), 'funcionario_id');
+}
+function cursosProgressoToRows(data) {
+  return Object.entries(data).map(([funcionarioId, cursos]) => ({ funcionario_id: funcionarioId, cursos: cursos || {} }));
+}
+function rowsToCursosProgresso(rows) {
+  return rows.reduce((acc, r) => {
+    acc[r.funcionario_id] = r.cursos || {};
+    return acc;
+  }, {});
 }
 function cursosDoCargo(cargo) {
   return CURSOS_POR_CARGO[cargo] || [];
@@ -1334,6 +1478,114 @@ function escapeHtml(str) {
 }
 
 /* ===== Init ===== */
-renderHeader();
-updatePendBadge();
-renderHoje();
+async function fetchAllFromSupabase() {
+  const [verifRes, funcRes, leadsRes, vendasRes, metasRes, cursosRes] = await Promise.all([
+    sb.from('verificacoes').select('*'),
+    sb.from('funcionarios').select('*'),
+    sb.from('leads').select('*'),
+    sb.from('vendas').select('*'),
+    sb.from('metas').select('*'),
+    sb.from('cursos_progresso').select('*')
+  ]);
+  const all = [verifRes, funcRes, leadsRes, vendasRes, metasRes, cursosRes];
+  const ok = all.every(res => !res.error);
+  if (!ok) all.forEach(res => { if (res.error) console.error('Erro ao carregar dados do Supabase:', res.error); });
+  return {
+    ok,
+    verificacoes: verifRes.data || [],
+    funcionarios: funcRes.data || [],
+    leads: leadsRes.data || [],
+    vendas: vendasRes.data || [],
+    metas: metasRes.data || [],
+    cursosProgresso: cursosRes.data || []
+  };
+}
+
+function readLegacyLocalStorage() {
+  function readKey(key, fallback) {
+    try { return JSON.parse(localStorage.getItem(key)) || fallback; }
+    catch (e) { return fallback; }
+  }
+  return {
+    records: readKey(STORAGE_KEY, {}),
+    funcionarios: readKey(FUNC_STORAGE_KEY, []),
+    leads: readKey(LEADS_STORAGE_KEY, []),
+    vendas: readKey(VENDAS_STORAGE_KEY, []),
+    metas: readKey(METAS_STORAGE_KEY, {}),
+    cursosProgresso: readKey(CURSOS_PROGRESSO_KEY, {})
+  };
+}
+
+// Na primeira carga após a migração para o Supabase, se as tabelas remotas ainda
+// estiverem vazias e existirem dados antigos no localStorage, envia esses dados
+// para o Supabase uma única vez (o localStorage original não é apagado). Só marca
+// a migração como concluída se as tabelas remotas puderam ser lidas e a gravação
+// não teve erros — caso contrário tenta de novo na próxima carga.
+async function migrateLegacyDataIfNeeded(remote) {
+  if (!remote.ok || localStorage.getItem(MIGRATION_FLAG)) return remote;
+
+  const remoteIsEmpty = remote.verificacoes.length === 0 && remote.funcionarios.length === 0 &&
+    remote.leads.length === 0 && remote.vendas.length === 0 &&
+    remote.metas.length === 0 && remote.cursosProgresso.length === 0;
+
+  const legacy = readLegacyLocalStorage();
+  const legacyHasData = Object.keys(legacy.records).length > 0 || legacy.funcionarios.length > 0 ||
+    legacy.leads.length > 0 || legacy.vendas.length > 0 ||
+    Object.keys(legacy.metas).length > 0 || Object.keys(legacy.cursosProgresso).length > 0;
+
+  if (!remoteIsEmpty || !legacyHasData) {
+    localStorage.setItem(MIGRATION_FLAG, '1');
+    return remote;
+  }
+
+  const tasks = [];
+  if (Object.keys(legacy.records).length > 0) tasks.push(sb.from('verificacoes').upsert(recordsToRows(legacy.records), { onConflict: 'data' }));
+  if (legacy.funcionarios.length > 0) tasks.push(sb.from('funcionarios').upsert(funcionariosToRows(legacy.funcionarios), { onConflict: 'id' }));
+  if (legacy.leads.length > 0) tasks.push(sb.from('leads').upsert(leadsToRows(legacy.leads), { onConflict: 'id' }));
+  if (legacy.vendas.length > 0) tasks.push(sb.from('vendas').upsert(vendasToRows(legacy.vendas), { onConflict: 'id' }));
+  if (Object.keys(legacy.metas).length > 0) tasks.push(sb.from('metas').upsert(metasToRows(legacy.metas), { onConflict: 'mes' }));
+  if (Object.keys(legacy.cursosProgresso).length > 0) tasks.push(sb.from('cursos_progresso').upsert(cursosProgressoToRows(legacy.cursosProgresso), { onConflict: 'funcionario_id' }));
+
+  const results = await Promise.all(tasks);
+  const migrationOk = results.every(res => !res.error);
+  results.forEach(res => {
+    if (res.error) console.error('Erro ao migrar dados antigos para o Supabase:', res.error);
+  });
+
+  if (!migrationOk) return remote;
+
+  localStorage.setItem(MIGRATION_FLAG, '1');
+  return fetchAllFromSupabase();
+}
+
+async function bootstrap() {
+  let remote = await fetchAllFromSupabase();
+  remote = await migrateLegacyDataIfNeeded(remote);
+
+  if (remote.ok) {
+    _records = rowsToRecords(remote.verificacoes);
+    _funcionarios = rowsToFuncionarios(remote.funcionarios);
+    _leads = rowsToLeads(remote.leads);
+    _vendas = rowsToVendas(remote.vendas);
+    _metas = rowsToMetas(remote.metas);
+    _cursosProgresso = rowsToCursosProgresso(remote.cursosProgresso);
+  } else {
+    // Supabase indisponível (ex.: tabelas ainda não criadas) — usa os dados locais
+    // como fallback temporário, sem apagar nada; a sincronização retoma sozinha
+    // assim que o Supabase responder normalmente.
+    const legacy = readLegacyLocalStorage();
+    _records = legacy.records;
+    _funcionarios = legacy.funcionarios;
+    _leads = legacy.leads;
+    _vendas = legacy.vendas;
+    _metas = legacy.metas;
+    _cursosProgresso = legacy.cursosProgresso;
+  }
+
+  document.body.classList.remove('app-loading');
+  renderHeader();
+  updatePendBadge();
+  renderHoje();
+}
+
+bootstrap();
