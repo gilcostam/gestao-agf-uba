@@ -744,9 +744,6 @@ function renderNovoLeadForm() {
     list.push(novoLead);
     saveLeads(list);
 
-    const funcionario = loadFuncionarios().find(f => f.id === funcionarioId);
-    window.open(buildLeadWhatsAppUrl(novoLead, funcionario ? funcionario.nome : ''), '_blank');
-
     ['leadRazaoSocial', 'leadCnpj', 'leadEmail', 'leadEndereco', 'leadCelular'].forEach(id => {
       document.getElementById(id).value = '';
     });
@@ -764,6 +761,8 @@ function renderLeadsList() {
   document.getElementById('buscaLead').oninput = renderLeadsListInner;
   renderLeadsListInner();
 }
+
+let editingLeadId = null;
 
 function renderLeadsListInner() {
   const etapaF = document.getElementById('filtroEtapaLead').value;
@@ -786,9 +785,37 @@ function renderLeadsListInner() {
     return;
   }
 
-  const funcionarios = loadFuncionarios();
+  const funcionarios = loadFuncionarios().slice().sort((a, b) => a.nome.localeCompare(b.nome));
   container.innerHTML = leads.map(l => {
     const func = funcionarios.find(f => f.id === l.funcionarioId);
+    if (l.id === editingLeadId) {
+      return `
+      <div class="list-item">
+        <div class="list-item-top">
+          <span class="cat-pill">${escapeHtml(func ? func.nome : 'Sem responsável')}</span>
+          <span class="status-tag ${l.etapa}">${etapaLabel(l.etapa)}</span>
+        </div>
+        <label class="field-label">Razão social</label>
+        <input type="text" class="leadEditRazaoSocial" data-id="${l.id}" value="${escapeHtml(l.razaoSocial)}">
+        <label class="field-label">CNPJ</label>
+        <input type="text" class="leadEditCnpj" data-id="${l.id}" value="${escapeHtml(l.cnpj || '')}">
+        <label class="field-label">E-mail</label>
+        <input type="text" class="leadEditEmail" data-id="${l.id}" value="${escapeHtml(l.email || '')}">
+        <label class="field-label">Endereço</label>
+        <input type="text" class="leadEditEndereco" data-id="${l.id}" value="${escapeHtml(l.endereco || '')}">
+        <label class="field-label">Celular</label>
+        <input type="text" class="leadEditCelular" data-id="${l.id}" value="${escapeHtml(l.celular || '')}">
+        <label class="field-label">Funcionário responsável</label>
+        <select class="leadEditFuncionario" data-id="${l.id}">
+          ${funcionarios.map(f => `<option value="${f.id}" ${f.id === l.funcionarioId ? 'selected' : ''}>${escapeHtml(f.nome)} (${escapeHtml(f.cargo)})</option>`).join('')}
+        </select>
+        <div style="margin-top:10px; display:flex; gap:12px; align-items:center;">
+          <button class="save-btn" data-action="salvar-edicao" data-id="${l.id}" style="width:auto; padding:8px 16px;">Salvar edição</button>
+          <button class="link-btn" data-action="cancelar-edicao" data-id="${l.id}">Cancelar</button>
+        </div>
+      </div>
+      `;
+    }
     return `
     <div class="list-item">
       <div class="list-item-top">
@@ -808,8 +835,9 @@ function renderLeadsListInner() {
         <input type="date" class="leadEtapaDate" data-id="${l.id}" value="${todayStr()}">
         <button class="small-btn" data-action="atualizar-etapa" data-id="${l.id}">Atualizar etapa</button>
       </div>
-      <div style="margin-top:8px; display:flex; gap:12px; align-items:center;">
+      <div style="margin-top:8px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
         <button class="small-btn whatsapp-btn" data-action="enviar-whatsapp" data-id="${l.id}">Enviar para o Guilherme (WhatsApp)</button>
+        <button class="small-btn" data-action="editar-lead" data-id="${l.id}">Editar</button>
         <button class="link-btn" data-action="excluir-lead" data-id="${l.id}">Excluir lead</button>
       </div>
     </div>
@@ -818,10 +846,52 @@ function renderLeadsListInner() {
 
   container.querySelectorAll('[data-action="enviar-whatsapp"]').forEach(btn => {
     btn.addEventListener('click', () => {
-      const lead = loadLeads().find(x => x.id === btn.dataset.id);
+      const list = loadLeads();
+      const lead = list.find(x => x.id === btn.dataset.id);
       if (!lead) return;
       const func = funcionarios.find(f => f.id === lead.funcionarioId);
       window.open(buildLeadWhatsAppUrl(lead, func ? func.nome : ''), '_blank');
+
+      // Avança automaticamente a etapa para "Envio do lead para o Guilherme",
+      // mas só se o lead ainda estiver na etapa inicial (não regride etapas mais avançadas).
+      if (lead.etapa === 'prospeccao') {
+        lead.etapa = 'envio_guilherme';
+        lead.historico.push({ etapa: 'envio_guilherme', data: todayStr() });
+        saveLeads(list);
+        renderLeadsListInner();
+      }
+    });
+  });
+  container.querySelectorAll('[data-action="editar-lead"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      editingLeadId = btn.dataset.id;
+      renderLeadsListInner();
+    });
+  });
+  container.querySelectorAll('[data-action="cancelar-edicao"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      editingLeadId = null;
+      renderLeadsListInner();
+    });
+  });
+  container.querySelectorAll('[data-action="salvar-edicao"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      const razaoSocial = container.querySelector(`.leadEditRazaoSocial[data-id="${id}"]`).value.trim();
+      const cnpj = container.querySelector(`.leadEditCnpj[data-id="${id}"]`).value.trim();
+      const email = container.querySelector(`.leadEditEmail[data-id="${id}"]`).value.trim();
+      const endereco = container.querySelector(`.leadEditEndereco[data-id="${id}"]`).value.trim();
+      const celular = container.querySelector(`.leadEditCelular[data-id="${id}"]`).value.trim();
+      const funcionarioId = container.querySelector(`.leadEditFuncionario[data-id="${id}"]`).value;
+
+      if (!razaoSocial) { alert('Informe a razão social.'); return; }
+
+      const list = loadLeads();
+      const lead = list.find(x => x.id === id);
+      Object.assign(lead, { razaoSocial, cnpj, email, endereco, celular, funcionarioId });
+      saveLeads(list);
+      editingLeadId = null;
+      renderLeadsListInner();
     });
   });
   container.querySelectorAll('[data-action="atualizar-etapa"]').forEach(btn => {
