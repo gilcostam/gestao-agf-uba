@@ -643,6 +643,24 @@ function etapaLabel(key) {
   return e ? e.label : key;
 }
 
+/* Envio do lead por WhatsApp para o Guilherme */
+const WHATSAPP_GUILHERME = '5532984452535'; // (32) 98445-2535, com código do país (55)
+function buildLeadWhatsAppUrl(lead, funcionarioNome) {
+  const linhas = [
+    'Novo lead para prospecção:',
+    '',
+    `Razão social: ${lead.razaoSocial}`
+  ];
+  if (lead.cnpj) linhas.push(`CNPJ: ${lead.cnpj}`);
+  if (lead.email) linhas.push(`E-mail: ${lead.email}`);
+  if (lead.endereco) linhas.push(`Endereço: ${lead.endereco}`);
+  if (lead.celular) linhas.push(`Celular: ${lead.celular}`);
+  linhas.push(`Responsável: ${funcionarioNome || 'Não informado'}`);
+  linhas.push(`Data: ${formatDateBR(lead.criadoEm)}`);
+  const texto = encodeURIComponent(linhas.join('\n'));
+  return `https://wa.me/${WHATSAPP_GUILHERME}?text=${texto}`;
+}
+
 let _leads = [];
 function loadLeads() {
   return _leads;
@@ -715,15 +733,19 @@ function renderNovoLeadForm() {
     if (!funcionarioId) { alert('Selecione o funcionário responsável pela prospecção.'); return; }
 
     const hoje = todayStr();
-    const list = loadLeads();
-    list.push({
+    const novoLead = {
       id: genId(),
       razaoSocial, cnpj, email, endereco, celular, funcionarioId,
       etapa: 'prospeccao',
       historico: [{ etapa: 'prospeccao', data: hoje }],
       criadoEm: hoje
-    });
+    };
+    const list = loadLeads();
+    list.push(novoLead);
     saveLeads(list);
+
+    const funcionario = loadFuncionarios().find(f => f.id === funcionarioId);
+    window.open(buildLeadWhatsAppUrl(novoLead, funcionario ? funcionario.nome : ''), '_blank');
 
     ['leadRazaoSocial', 'leadCnpj', 'leadEmail', 'leadEndereco', 'leadCelular'].forEach(id => {
       document.getElementById(id).value = '';
@@ -786,11 +808,22 @@ function renderLeadsListInner() {
         <input type="date" class="leadEtapaDate" data-id="${l.id}" value="${todayStr()}">
         <button class="small-btn" data-action="atualizar-etapa" data-id="${l.id}">Atualizar etapa</button>
       </div>
-      <button class="link-btn" data-action="excluir-lead" data-id="${l.id}" style="margin-top:8px;">Excluir lead</button>
+      <div style="margin-top:8px; display:flex; gap:12px; align-items:center;">
+        <button class="small-btn whatsapp-btn" data-action="enviar-whatsapp" data-id="${l.id}">Enviar para o Guilherme (WhatsApp)</button>
+        <button class="link-btn" data-action="excluir-lead" data-id="${l.id}">Excluir lead</button>
+      </div>
     </div>
     `;
   }).join('');
 
+  container.querySelectorAll('[data-action="enviar-whatsapp"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const lead = loadLeads().find(x => x.id === btn.dataset.id);
+      if (!lead) return;
+      const func = funcionarios.find(f => f.id === lead.funcionarioId);
+      window.open(buildLeadWhatsAppUrl(lead, func ? func.nome : ''), '_blank');
+    });
+  });
   container.querySelectorAll('[data-action="atualizar-etapa"]').forEach(btn => {
     btn.addEventListener('click', () => {
       const id = btn.dataset.id;

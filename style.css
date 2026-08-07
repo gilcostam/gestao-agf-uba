@@ -483,6 +483,8 @@ textarea { resize: vertical; min-height: 70px; }
 }
 .small-btn:hover { border-color: var(--azul); color: var(--azul); }
 .small-btn.danger:hover { border-color: var(--vermelho); color: var(--vermelho); }
+.small-btn.whatsapp-btn { border-color: var(--verde); color: var(--verde); }
+.small-btn.whatsapp-btn:hover { background: var(--verde); color: var(--branco); }
 
 /* Leads / Prospecção */
 .status-tag.prospeccao { background: #e8eaed; color: #3c4043; }
