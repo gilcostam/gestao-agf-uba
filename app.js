@@ -636,8 +636,17 @@ const ETAPAS = [
   { key: 'prospeccao', label: 'Prospecção' },
   { key: 'envio_guilherme', label: 'Envio do lead para o Guilherme' },
   { key: 'cadastro_correios', label: 'Cadastro nos Correios' },
-  { key: 'contrato_assinado', label: 'Contrato assinado' }
+  { key: 'contrato_assinado', label: 'Contrato assinado' },
+  { key: 'postando_agf', label: 'Começou a postar na AGF' }
 ];
+/* Leads que já chegam com contrato pulam o envio para o Guilherme e seguem
+   direto para "Começou a postar na AGF" em vez do fluxo normal. */
+const ETAPAS_COM_CONTRATO_KEYS = ['prospeccao', 'postando_agf'];
+const ETAPAS_SEM_CONTRATO_KEYS = ['prospeccao', 'envio_guilherme', 'cadastro_correios', 'contrato_assinado'];
+function etapasParaLead(lead) {
+  const keys = lead.temContrato ? ETAPAS_COM_CONTRATO_KEYS : ETAPAS_SEM_CONTRATO_KEYS;
+  return ETAPAS.filter(e => keys.includes(e.key));
+}
 function etapaLabel(key) {
   const e = ETAPAS.find(x => x.key === key);
   return e ? e.label : key;
@@ -679,6 +688,7 @@ function leadsToRows(list) {
     celular: l.celular || '',
     funcionario_id: l.funcionarioId || null,
     etapa: l.etapa,
+    tem_contrato: !!l.temContrato,
     historico: l.historico || [],
     criado_em: l.criadoEm
   }));
@@ -693,6 +703,7 @@ function rowsToLeads(rows) {
     celular: r.celular || '',
     funcionarioId: r.funcionario_id || '',
     etapa: r.etapa,
+    temContrato: !!r.tem_contrato,
     historico: r.historico || [],
     criadoEm: r.criado_em
   }));
@@ -728,6 +739,7 @@ function renderNovoLeadForm() {
     const endereco = document.getElementById('leadEndereco').value.trim();
     const celular = document.getElementById('leadCelular').value.trim();
     const funcionarioId = document.getElementById('leadFuncionario').value;
+    const temContrato = document.getElementById('leadTemContrato').checked;
 
     if (!razaoSocial) { alert('Informe a razão social.'); return; }
     if (!funcionarioId) { alert('Selecione o funcionário responsável pela prospecção.'); return; }
@@ -735,7 +747,7 @@ function renderNovoLeadForm() {
     const hoje = todayStr();
     const novoLead = {
       id: genId(),
-      razaoSocial, cnpj, email, endereco, celular, funcionarioId,
+      razaoSocial, cnpj, email, endereco, celular, funcionarioId, temContrato,
       etapa: 'prospeccao',
       historico: [{ etapa: 'prospeccao', data: hoje }],
       criadoEm: hoje
@@ -748,6 +760,7 @@ function renderNovoLeadForm() {
       document.getElementById(id).value = '';
     });
     document.getElementById('leadFuncionario').selectedIndex = 0;
+    document.getElementById('leadTemContrato').checked = false;
     activateProspTab('leads');
   };
 }
@@ -809,6 +822,10 @@ function renderLeadsListInner() {
         <select class="leadEditFuncionario" data-id="${l.id}">
           ${funcionarios.map(f => `<option value="${f.id}" ${f.id === l.funcionarioId ? 'selected' : ''}>${escapeHtml(f.nome)} (${escapeHtml(f.cargo)})</option>`).join('')}
         </select>
+        <label class="curso-check-row">
+          <input type="checkbox" class="leadEditTemContrato" data-id="${l.id}" ${l.temContrato ? 'checked' : ''}>
+          <span>Cliente já tem contrato com a AGF (não precisa enviar para o Guilherme)</span>
+        </label>
         <div style="margin-top:10px; display:flex; gap:12px; align-items:center;">
           <button class="save-btn" data-action="salvar-edicao" data-id="${l.id}" style="width:auto; padding:8px 16px;">Salvar edição</button>
           <button class="link-btn" data-action="cancelar-edicao" data-id="${l.id}">Cancelar</button>
@@ -820,6 +837,7 @@ function renderLeadsListInner() {
     <div class="list-item">
       <div class="list-item-top">
         <span class="cat-pill">${escapeHtml(func ? func.nome : 'Sem responsável')}</span>
+        ${l.temContrato ? '<span class="cat-pill" style="background:var(--verde)">Já tem contrato</span>' : ''}
         <span class="status-tag ${l.etapa}">${etapaLabel(l.etapa)}</span>
       </div>
       <div class="list-item-question">${escapeHtml(l.razaoSocial)}</div>
@@ -830,13 +848,13 @@ function renderLeadsListInner() {
       <div class="meta-line">Criado em ${formatDateBR(l.criadoEm)}</div>
       <div class="lead-etapa-control">
         <select class="leadEtapaSelect" data-id="${l.id}">
-          ${ETAPAS.map(e => `<option value="${e.key}" ${e.key === l.etapa ? 'selected' : ''}>${e.label}</option>`).join('')}
+          ${etapasParaLead(l).map(e => `<option value="${e.key}" ${e.key === l.etapa ? 'selected' : ''}>${e.label}</option>`).join('')}
         </select>
         <input type="date" class="leadEtapaDate" data-id="${l.id}" value="${todayStr()}">
         <button class="small-btn" data-action="atualizar-etapa" data-id="${l.id}">Atualizar etapa</button>
       </div>
       <div style="margin-top:8px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-        <button class="small-btn whatsapp-btn" data-action="enviar-whatsapp" data-id="${l.id}">Enviar para o Guilherme (WhatsApp)</button>
+        ${l.temContrato ? '' : `<button class="small-btn whatsapp-btn" data-action="enviar-whatsapp" data-id="${l.id}">Enviar para o Guilherme (WhatsApp)</button>`}
         <button class="small-btn" data-action="editar-lead" data-id="${l.id}">Editar</button>
         <button class="link-btn" data-action="excluir-lead" data-id="${l.id}">Excluir lead</button>
       </div>
@@ -883,12 +901,22 @@ function renderLeadsListInner() {
       const endereco = container.querySelector(`.leadEditEndereco[data-id="${id}"]`).value.trim();
       const celular = container.querySelector(`.leadEditCelular[data-id="${id}"]`).value.trim();
       const funcionarioId = container.querySelector(`.leadEditFuncionario[data-id="${id}"]`).value;
+      const temContrato = container.querySelector(`.leadEditTemContrato[data-id="${id}"]`).checked;
 
       if (!razaoSocial) { alert('Informe a razão social.'); return; }
 
       const list = loadLeads();
       const lead = list.find(x => x.id === id);
-      Object.assign(lead, { razaoSocial, cnpj, email, endereco, celular, funcionarioId });
+      Object.assign(lead, { razaoSocial, cnpj, email, endereco, celular, funcionarioId, temContrato });
+
+      // Se a etapa atual não existe mais no fluxo correspondente (ex.: mudou "tem contrato"
+      // depois que o lead já estava em "Envio para o Guilherme"), volta para Prospecção.
+      const chavesValidas = (temContrato ? ETAPAS_COM_CONTRATO_KEYS : ETAPAS_SEM_CONTRATO_KEYS);
+      if (!chavesValidas.includes(lead.etapa)) {
+        lead.etapa = 'prospeccao';
+        lead.historico.push({ etapa: 'prospeccao', data: todayStr() });
+      }
+
       saveLeads(list);
       editingLeadId = null;
       renderLeadsListInner();
@@ -1489,10 +1517,14 @@ function calcularComissoes() {
   const vendas = loadVendas();
 
   const contratosPorFuncionario = {};
+  const postagensPorFuncionario = {};
   leads.forEach(l => {
     (l.historico || []).forEach(h => {
       if (h.etapa === 'contrato_assinado') {
         contratosPorFuncionario[l.funcionarioId] = (contratosPorFuncionario[l.funcionarioId] || 0) + 1;
+      }
+      if (h.etapa === 'postando_agf') {
+        postagensPorFuncionario[l.funcionarioId] = (postagensPorFuncionario[l.funcionarioId] || 0) + 1;
       }
     });
   });
@@ -1521,16 +1553,20 @@ function calcularComissoes() {
 
   return funcionarios.map(f => {
     const contratos = contratosPorFuncionario[f.id] || 0;
+    const postagens = postagensPorFuncionario[f.id] || 0;
     const mesesLiderados = mesesLideradosPorFuncionario[f.id] || 0;
     const comissaoContratos = contratos * COMISSAO_CONTRATO_VALOR;
+    const comissaoPostagens = postagens * COMISSAO_CONTRATO_VALOR;
     const comissaoProdutos = comissaoProdutosPorFuncionario[f.id] || 0;
     return {
       funcionario: f,
       contratos,
+      postagens,
       mesesLiderados,
       comissaoContratos,
+      comissaoPostagens,
       comissaoProdutos,
-      total: comissaoContratos + comissaoProdutos
+      total: comissaoContratos + comissaoPostagens + comissaoProdutos
     };
   })
   .filter(r => r.total > 0)
@@ -1540,13 +1576,15 @@ function calcularComissoes() {
 function renderComissoes() {
   const dados = calcularComissoes();
   const totalContratos = dados.reduce((s, r) => s + r.comissaoContratos, 0);
+  const totalPostagens = dados.reduce((s, r) => s + r.comissaoPostagens, 0);
   const totalProdutos = dados.reduce((s, r) => s + r.comissaoProdutos, 0);
-  const totalGeral = totalContratos + totalProdutos;
+  const totalGeral = totalContratos + totalPostagens + totalProdutos;
 
   let html = `
     <div class="stat-grid">
       <div class="stat-box"><div class="num" style="color:var(--verde)">${formatBRL(totalGeral)}</div><div class="lbl">Comissão total da equipe</div></div>
       <div class="stat-box"><div class="num">${formatBRL(totalContratos)}</div><div class="lbl">De contratos assinados</div></div>
+      <div class="stat-box"><div class="num">${formatBRL(totalPostagens)}</div><div class="lbl">De clientes postando na AGF</div></div>
       <div class="stat-box"><div class="num">${formatBRL(totalProdutos)}</div><div class="lbl">De liderança em produtos</div></div>
     </div>
   `;
@@ -1560,7 +1598,7 @@ function renderComissoes() {
         <div class="rank-pos">${medals[i] || (i + 1)}</div>
         <div class="rank-info">
           <div class="rank-name">${escapeHtml(r.funcionario.nome)}</div>
-          <div class="rank-cargo">${escapeHtml(r.funcionario.cargo)} · ${r.contratos} contrato(s) assinado(s) · ${r.mesesLiderados} mês(es) líder em produtos</div>
+          <div class="rank-cargo">${escapeHtml(r.funcionario.cargo)} · ${r.contratos} contrato(s) assinado(s) · ${r.postagens} cliente(s) postando na AGF · ${r.mesesLiderados} mês(es) líder em produtos</div>
         </div>
         <div>
           <div class="rank-count" style="color:var(--verde)">${formatBRL(r.total)}</div>

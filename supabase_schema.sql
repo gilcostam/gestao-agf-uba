@@ -34,6 +34,7 @@ create table if not exists leads (
   celular text default '',
   funcionario_id text,
   etapa text not null default 'prospeccao',
+  tem_contrato boolean not null default false,
   historico jsonb not null default '[]',
   criado_em date not null default current_date
 );

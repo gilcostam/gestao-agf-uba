@@ -165,6 +165,7 @@
           <option value="envio_guilherme">Envio do lead para o Guilherme</option>
           <option value="cadastro_correios">Cadastro nos Correios</option>
           <option value="contrato_assinado">Contrato assinado</option>
+          <option value="postando_agf">Começou a postar na AGF</option>
         </select>
         <select id="filtroFuncionarioLead"></select>
         <input type="text" id="buscaLead" placeholder="Buscar por razão social ou CNPJ...">
@@ -187,6 +188,10 @@
         <input type="text" id="leadCelular" placeholder="(00) 00000-0000">
         <label class="field-label">Funcionário responsável</label>
         <select id="leadFuncionario"></select>
+        <label class="curso-check-row">
+          <input type="checkbox" id="leadTemContrato">
+          <span>Cliente já tem contrato com a AGF (não precisa enviar para o Guilherme)</span>
+        </label>
         <button class="save-btn" id="btnAddLead">Cadastrar lead</button>
       </div>
     </section>
