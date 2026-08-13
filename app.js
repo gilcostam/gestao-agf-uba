@@ -824,7 +824,7 @@ function renderLeadsListInner() {
         </select>
         <label class="curso-check-row">
           <input type="checkbox" class="leadEditTemContrato" data-id="${l.id}" ${l.temContrato ? 'checked' : ''}>
-          <span>Cliente já tem contrato com a AGF (não precisa enviar para o Guilherme)</span>
+          <span>Cliente já tem contrato com a ECT (não precisa enviar para o Guilherme)</span>
         </label>
         <div style="margin-top:10px; display:flex; gap:12px; align-items:center;">
           <button class="save-btn" data-action="salvar-edicao" data-id="${l.id}" style="width:auto; padding:8px 16px;">Salvar edição</button>
@@ -964,18 +964,26 @@ function renderRankingInner() {
   const funcionarios = loadFuncionarios();
 
   const assinadosNoMes = [];
+  const postagensNoMes = [];
   leads.forEach(l => {
     (l.historico || []).forEach(h => {
-      if (h.etapa === 'contrato_assinado' && h.data && h.data.startsWith(mes)) {
-        assinadosNoMes.push({ lead: l, data: h.data });
-      }
+      if (!h.data || !h.data.startsWith(mes)) return;
+      if (h.etapa === 'contrato_assinado') assinadosNoMes.push({ lead: l, data: h.data });
+      if (h.etapa === 'postando_agf') postagensNoMes.push({ lead: l, data: h.data });
     });
   });
   const totalAssinados = assinadosNoMes.length;
 
   const porFuncionarioAssinados = {};
+  const clientesAssinadosPorFuncionario = {};
   assinadosNoMes.forEach(({ lead }) => {
     porFuncionarioAssinados[lead.funcionarioId] = (porFuncionarioAssinados[lead.funcionarioId] || 0) + 1;
+    (clientesAssinadosPorFuncionario[lead.funcionarioId] = clientesAssinadosPorFuncionario[lead.funcionarioId] || []).push(lead.razaoSocial);
+  });
+
+  const clientesPostagemPorFuncionario = {};
+  postagensNoMes.forEach(({ lead }) => {
+    (clientesPostagemPorFuncionario[lead.funcionarioId] = clientesPostagemPorFuncionario[lead.funcionarioId] || []).push(lead.razaoSocial);
   });
 
   const leadsProspectadosNoMes = leads.filter(l => l.criadoEm && l.criadoEm.startsWith(mes));
@@ -988,9 +996,11 @@ function renderRankingInner() {
     .map(f => ({
       funcionario: f,
       assinados: porFuncionarioAssinados[f.id] || 0,
-      prospectados: porFuncionarioProspectados[f.id] || 0
+      prospectados: porFuncionarioProspectados[f.id] || 0,
+      clientesAssinados: clientesAssinadosPorFuncionario[f.id] || [],
+      clientesPostagem: clientesPostagemPorFuncionario[f.id] || []
     }))
-    .filter(r => r.assinados > 0 || r.prospectados > 0)
+    .filter(r => r.assinados > 0 || r.prospectados > 0 || r.clientesPostagem.length > 0)
     .sort((a, b) => b.assinados - a.assinados || b.prospectados - a.prospectados);
 
   let html = `
@@ -1010,6 +1020,8 @@ function renderRankingInner() {
         <div class="rank-info">
           <div class="rank-name">${escapeHtml(r.funcionario.nome)}</div>
           <div class="rank-cargo">${escapeHtml(r.funcionario.cargo)} · ${r.prospectados} lead(s) prospectado(s) no mês</div>
+          ${r.clientesAssinados.length > 0 ? `<div class="meta-line">Contratos assinados: ${r.clientesAssinados.map(escapeHtml).join(', ')}</div>` : ''}
+          ${r.clientesPostagem.length > 0 ? `<div class="meta-line">Começaram a postar na AGF: ${r.clientesPostagem.map(escapeHtml).join(', ')}</div>` : ''}
         </div>
         <div>
           <div class="rank-count">${r.assinados}</div>
@@ -1518,13 +1530,17 @@ function calcularComissoes() {
 
   const contratosPorFuncionario = {};
   const postagensPorFuncionario = {};
+  const clientesContratoPorFuncionario = {};
+  const clientesPostagemPorFuncionario = {};
   leads.forEach(l => {
     (l.historico || []).forEach(h => {
       if (h.etapa === 'contrato_assinado') {
         contratosPorFuncionario[l.funcionarioId] = (contratosPorFuncionario[l.funcionarioId] || 0) + 1;
+        (clientesContratoPorFuncionario[l.funcionarioId] = clientesContratoPorFuncionario[l.funcionarioId] || []).push(l.razaoSocial);
       }
       if (h.etapa === 'postando_agf') {
         postagensPorFuncionario[l.funcionarioId] = (postagensPorFuncionario[l.funcionarioId] || 0) + 1;
+        (clientesPostagemPorFuncionario[l.funcionarioId] = clientesPostagemPorFuncionario[l.funcionarioId] || []).push(l.razaoSocial);
       }
     });
   });
@@ -1566,6 +1582,8 @@ function calcularComissoes() {
       comissaoContratos,
       comissaoPostagens,
       comissaoProdutos,
+      clientesContrato: clientesContratoPorFuncionario[f.id] || [],
+      clientesPostagem: clientesPostagemPorFuncionario[f.id] || [],
       total: comissaoContratos + comissaoPostagens + comissaoProdutos
     };
   })
@@ -1599,6 +1617,8 @@ function renderComissoes() {
         <div class="rank-info">
           <div class="rank-name">${escapeHtml(r.funcionario.nome)}</div>
           <div class="rank-cargo">${escapeHtml(r.funcionario.cargo)} · ${r.contratos} contrato(s) assinado(s) · ${r.postagens} cliente(s) postando na AGF · ${r.mesesLiderados} mês(es) líder em produtos</div>
+          ${r.clientesContrato.length > 0 ? `<div class="meta-line">Contratos assinados: ${r.clientesContrato.map(escapeHtml).join(', ')}</div>` : ''}
+          ${r.clientesPostagem.length > 0 ? `<div class="meta-line">Começaram a postar na AGF: ${r.clientesPostagem.map(escapeHtml).join(', ')}</div>` : ''}
         </div>
         <div>
           <div class="rank-count" style="color:var(--verde)">${formatBRL(r.total)}</div>
