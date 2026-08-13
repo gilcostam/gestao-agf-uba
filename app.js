@@ -142,7 +142,7 @@ function setRecord(dateStr, data) {
 }
 
 /* ===== Navegação por módulos (Verificação / Equipe / Prospecção / Produtos / Cursos) ===== */
-const MODULES = ['verificacao', 'equipe', 'prospeccao', 'produtos', 'cursos', 'comissoes'];
+const MODULES = ['verificacao', 'equipe', 'prospeccao', 'produtos', 'cursos', 'comissoes', 'relatorios'];
 document.getElementById('primaryNav').addEventListener('click', (e) => {
   const btn = e.target.closest('.primary-btn');
   if (!btn) return;
@@ -164,6 +164,7 @@ function activateModule(name) {
   if (name === 'produtos') activateProdutosTab(currentProdTab);
   if (name === 'cursos') activateCursosTab(currentCursoTab);
   if (name === 'comissoes') renderComissoes();
+  if (name === 'relatorios') activateRelatoriosModule();
 }
 
 /* ===== Navegação por abas (módulo Verificação) ===== */
@@ -1629,6 +1630,240 @@ function renderComissoes() {
   }
 
   document.getElementById('comissoesBody').innerHTML = html;
+}
+
+/* ===================================================================
+   MÓDULO: RELATÓRIOS (consolidado semanal/mensal/personalizado)
+   =================================================================== */
+function isoDateStr(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function startOfWeek(d) {
+  const date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const dia = date.getDay(); // 0 = domingo
+  const diff = (dia === 0 ? -6 : 1 - dia); // segunda-feira como início da semana
+  date.setDate(date.getDate() + diff);
+  return date;
+}
+function periodoRelatorioGeral(tipo) {
+  const hoje = new Date();
+  let inicio, fim;
+  if (tipo === 'semana_atual') {
+    inicio = startOfWeek(hoje);
+    fim = new Date(inicio); fim.setDate(fim.getDate() + 6);
+  } else if (tipo === 'semana_passada') {
+    inicio = startOfWeek(hoje); inicio.setDate(inicio.getDate() - 7);
+    fim = new Date(inicio); fim.setDate(fim.getDate() + 6);
+  } else if (tipo === 'mes_passado') {
+    inicio = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+    fim = new Date(hoje.getFullYear(), hoje.getMonth(), 0);
+  } else {
+    inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+    fim = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
+  }
+  return { inicio: isoDateStr(inicio), fim: isoDateStr(fim) };
+}
+
+function activateRelatoriosModule() {
+  const tipoSel = document.getElementById('relatorioTipoPeriodo');
+  document.getElementById('relatorioPersonalizadoRow').classList.toggle('hidden', tipoSel.value !== 'personalizado');
+  if (tipoSel.value !== 'personalizado') {
+    const { inicio, fim } = periodoRelatorioGeral(tipoSel.value);
+    document.getElementById('relatorioDataInicio').value = inicio;
+    document.getElementById('relatorioDataFim').value = fim;
+  }
+  renderRelatorioGeral();
+}
+
+document.getElementById('relatorioTipoPeriodo').addEventListener('change', () => {
+  const tipoSel = document.getElementById('relatorioTipoPeriodo');
+  const personalizado = tipoSel.value === 'personalizado';
+  document.getElementById('relatorioPersonalizadoRow').classList.toggle('hidden', !personalizado);
+  if (!personalizado) {
+    const { inicio, fim } = periodoRelatorioGeral(tipoSel.value);
+    document.getElementById('relatorioDataInicio').value = inicio;
+    document.getElementById('relatorioDataFim').value = fim;
+    renderRelatorioGeral();
+  }
+});
+document.getElementById('btnGerarRelatorio').addEventListener('click', renderRelatorioGeral);
+document.getElementById('btnImprimirRelatorio').addEventListener('click', () => window.print());
+
+function renderRelatorioGeral() {
+  const inicio = document.getElementById('relatorioDataInicio').value;
+  const fim = document.getElementById('relatorioDataFim').value;
+  const body = document.getElementById('relatorioGeralBody');
+  if (!inicio || !fim || inicio > fim) {
+    body.innerHTML = '<div class="empty-state">Selecione um período válido.</div>';
+    return;
+  }
+  const noPeriodo = (dataStr) => !!dataStr && dataStr >= inicio && dataStr <= fim;
+  const inicioBR = formatDateBR(inicio);
+  const fimBR = formatDateBR(fim);
+
+  /* ---- Verificações ---- */
+  const records = loadRecords();
+  const verifEntries = Object.entries(records).filter(([data]) => noPeriodo(data));
+  const verifTotal = verifEntries.length;
+  const verifConformes = verifEntries.filter(([, r]) => r.status === 'conforme').length;
+  const verifNaoConformes = verifEntries.filter(([, r]) => r.status === 'nao_conforme').length;
+  const verifBase = verifEntries.filter(([, r]) => r.status !== 'na').length;
+  const verifPct = verifBase > 0 ? Math.round((verifConformes / verifBase) * 100) : 0;
+
+  let verifCatHtml = '';
+  Object.keys(CAT_LABELS).forEach(cat => {
+    const catEntries = verifEntries.filter(([, r]) => itemById(r.itemId).cat === cat);
+    const catBase = catEntries.filter(([, r]) => r.status !== 'na').length;
+    const catConf = catEntries.filter(([, r]) => r.status === 'conforme').length;
+    const pct = catBase > 0 ? Math.round((catConf / catBase) * 100) : null;
+    verifCatHtml += `
+      <div class="bar-row">
+        <div class="bar-label"><span>${CAT_LABELS[cat]}</span><span>${pct === null ? 'sem dados' : pct + '%'} (${catEntries.length} verificações)</span></div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct || 0}%; background:${pct !== null && pct < 70 ? 'var(--vermelho)' : 'var(--verde)'}"></div></div>
+      </div>
+    `;
+  });
+
+  /* ---- Produtos ---- */
+  const vendas = loadVendas().filter(v => noPeriodo(v.data));
+  const funcionarios = loadFuncionarios();
+  const porFuncionarioProd = {};
+  const porProduto = {};
+  let totalPontosGeral = 0;
+  let totalItensGeral = 0;
+  vendas.forEach(v => {
+    const pontos = vendaTotalPontos(v);
+    const itens = vendaTotalItens(v);
+    totalPontosGeral += pontos;
+    totalItensGeral += itens;
+    if (!porFuncionarioProd[v.funcionarioId]) porFuncionarioProd[v.funcionarioId] = { pontos: 0, itens: 0 };
+    porFuncionarioProd[v.funcionarioId].pontos += pontos;
+    porFuncionarioProd[v.funcionarioId].itens += itens;
+    Object.entries(v.itens || {}).forEach(([prodId, qty]) => {
+      porProduto[prodId] = (porProduto[prodId] || 0) + qty;
+    });
+  });
+  const rankingProdutos = funcionarios
+    .map(f => ({ funcionario: f, pontos: (porFuncionarioProd[f.id] || {}).pontos || 0, itens: (porFuncionarioProd[f.id] || {}).itens || 0 }))
+    .filter(r => r.pontos > 0 || r.itens > 0)
+    .sort((a, b) => b.pontos - a.pontos || b.itens - a.itens);
+
+  /* ---- Prospecção ---- */
+  const leads = loadLeads();
+  const leadsProspectadosNoPeriodo = leads.filter(l => noPeriodo(l.criadoEm));
+  const contratosNoPeriodo = [];
+  const postagensNoPeriodo = [];
+  leads.forEach(l => {
+    (l.historico || []).forEach(h => {
+      if (!noPeriodo(h.data)) return;
+      if (h.etapa === 'contrato_assinado') contratosNoPeriodo.push(l);
+      if (h.etapa === 'postando_agf') postagensNoPeriodo.push(l);
+    });
+  });
+
+  const vazio = () => ({ prospectados: 0, contratos: 0, postagens: 0, clientesContrato: [], clientesPostagem: [], comissao: 0 });
+  const porFuncionarioProsp = {};
+  leadsProspectadosNoPeriodo.forEach(l => {
+    porFuncionarioProsp[l.funcionarioId] = porFuncionarioProsp[l.funcionarioId] || vazio();
+    porFuncionarioProsp[l.funcionarioId].prospectados++;
+  });
+  contratosNoPeriodo.forEach(l => {
+    porFuncionarioProsp[l.funcionarioId] = porFuncionarioProsp[l.funcionarioId] || vazio();
+    porFuncionarioProsp[l.funcionarioId].contratos++;
+    porFuncionarioProsp[l.funcionarioId].clientesContrato.push(l.razaoSocial);
+    porFuncionarioProsp[l.funcionarioId].comissao += COMISSAO_CONTRATO_VALOR;
+  });
+  postagensNoPeriodo.forEach(l => {
+    porFuncionarioProsp[l.funcionarioId] = porFuncionarioProsp[l.funcionarioId] || vazio();
+    porFuncionarioProsp[l.funcionarioId].postagens++;
+    porFuncionarioProsp[l.funcionarioId].clientesPostagem.push(l.razaoSocial);
+    porFuncionarioProsp[l.funcionarioId].comissao += COMISSAO_CONTRATO_VALOR;
+  });
+
+  const rankingProspeccao = funcionarios
+    .map(f => ({ funcionario: f, ...(porFuncionarioProsp[f.id] || vazio()) }))
+    .filter(r => r.prospectados > 0 || r.contratos > 0 || r.postagens > 0)
+    .sort((a, b) => b.contratos - a.contratos || b.postagens - a.postagens || b.prospectados - a.prospectados);
+
+  const comissaoProspeccaoTotal = rankingProspeccao.reduce((s, r) => s + r.comissao, 0);
+
+  /* ---- Montagem do HTML ---- */
+  let html = `<p class="muted">Período do relatório: <strong>${inicioBR}</strong> a <strong>${fimBR}</strong></p>`;
+
+  html += '<h2 style="font-size:15px; margin-top:18px;">Verificações diárias</h2>';
+  html += `
+    <div class="stat-grid">
+      <div class="stat-box"><div class="num">${verifTotal}</div><div class="lbl">Verificações</div></div>
+      <div class="stat-box"><div class="num" style="color:var(--verde)">${verifConformes}</div><div class="lbl">Conformes</div></div>
+      <div class="stat-box"><div class="num" style="color:var(--vermelho)">${verifNaoConformes}</div><div class="lbl">Não conformes</div></div>
+      <div class="stat-box"><div class="num">${verifPct}%</div><div class="lbl">Índice de conformidade</div></div>
+    </div>
+  `;
+  html += verifTotal > 0 ? verifCatHtml : '<div class="empty-state">Nenhuma verificação registrada no período.</div>';
+
+  html += '<h2 style="font-size:15px; margin-top:24px;">Produtos vendidos</h2>';
+  html += `
+    <div class="stat-grid">
+      <div class="stat-box"><div class="num" style="color:var(--verde)">${totalPontosGeral}</div><div class="lbl">Pontos no período</div></div>
+      <div class="stat-box"><div class="num">${totalItensGeral}</div><div class="lbl">Produtos vendidos</div></div>
+    </div>
+  `;
+  const produtosVendidos = PRODUCTS.filter(p => porProduto[p.id] > 0);
+  if (produtosVendidos.length > 0) {
+    html += produtosVendidos.map(p => `
+      <div class="bar-row">
+        <div class="bar-label"><span>${escapeHtml(p.nome)}</span><span>${porProduto[p.id]} unidade(s)</span></div>
+      </div>
+    `).join('');
+  }
+  if (rankingProdutos.length === 0) {
+    html += '<div class="empty-state">Nenhuma venda registrada no período.</div>';
+  } else {
+    const medals = ['🥇', '🥈', '🥉'];
+    html += rankingProdutos.map((r, i) => `
+      <div class="rank-row">
+        <div class="rank-pos">${medals[i] || (i + 1)}</div>
+        <div class="rank-info">
+          <div class="rank-name">${escapeHtml(r.funcionario.nome)}</div>
+          <div class="rank-cargo">${escapeHtml(r.funcionario.cargo)} · ${r.itens} produto(s) vendido(s)</div>
+        </div>
+        <div>
+          <div class="rank-count">${r.pontos}</div>
+          <div class="rank-count-lbl">pontos</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  html += '<h2 style="font-size:15px; margin-top:24px;">Prospecção de clientes</h2>';
+  html += `
+    <div class="stat-grid">
+      <div class="stat-box"><div class="num">${leadsProspectadosNoPeriodo.length}</div><div class="lbl">Leads prospectados</div></div>
+      <div class="stat-box"><div class="num" style="color:var(--verde)">${contratosNoPeriodo.length}</div><div class="lbl">Contratos assinados</div></div>
+      <div class="stat-box"><div class="num" style="color:var(--verde)">${postagensNoPeriodo.length}</div><div class="lbl">Clientes postando na AGF</div></div>
+      <div class="stat-box"><div class="num" style="color:var(--verde)">${formatBRL(comissaoProspeccaoTotal)}</div><div class="lbl">Comissão gerada</div></div>
+    </div>
+  `;
+  if (rankingProspeccao.length === 0) {
+    html += '<div class="empty-state">Nenhuma prospecção registrada no período.</div>';
+  } else {
+    html += rankingProspeccao.map(r => `
+      <div class="rank-row">
+        <div class="rank-info">
+          <div class="rank-name">${escapeHtml(r.funcionario.nome)}</div>
+          <div class="rank-cargo">${escapeHtml(r.funcionario.cargo)} · ${r.prospectados} lead(s) prospectado(s) · ${r.contratos} contrato(s) · ${r.postagens} postagem(ns)</div>
+          ${r.clientesContrato.length > 0 ? `<div class="meta-line">Contratos assinados: ${r.clientesContrato.map(escapeHtml).join(', ')}</div>` : ''}
+          ${r.clientesPostagem.length > 0 ? `<div class="meta-line">Começaram a postar na AGF: ${r.clientesPostagem.map(escapeHtml).join(', ')}</div>` : ''}
+        </div>
+        <div>
+          <div class="rank-count" style="color:var(--verde)">${formatBRL(r.comissao)}</div>
+          <div class="rank-count-lbl">comissão</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  body.innerHTML = html;
 }
 
 /* ===== Utils ===== */

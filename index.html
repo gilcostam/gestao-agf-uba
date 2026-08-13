@@ -31,6 +31,7 @@
     <button class="primary-btn" data-module="produtos">Produtos</button>
     <button class="primary-btn" data-module="cursos">Cursos</button>
     <button class="primary-btn" data-module="comissoes">Comissões</button>
+    <button class="primary-btn" data-module="relatorios">Relatórios</button>
   </nav>
 
   <nav class="tabs" id="tabsVerificacao">
@@ -279,6 +280,35 @@
     <h2>Comissões da equipe</h2>
     <p class="muted">R$ 30 por contrato assinado (Correios) e R$ 35 para quem liderar o ranking de pontos de produtos de terceiros a cada mês.</p>
     <div id="comissoesBody"></div>
+  </section>
+
+  <!-- ===== MÓDULO: RELATÓRIOS ===== -->
+  <section class="module hidden" id="module-relatorios">
+    <h2>Relatórios</h2>
+    <p class="muted">Relatório consolidado de verificações, produtos vendidos e prospecção de clientes para o período escolhido.</p>
+    <div class="card no-print">
+      <label class="field-label">Período</label>
+      <select id="relatorioTipoPeriodo">
+        <option value="semana_atual">Semana atual</option>
+        <option value="semana_passada">Semana passada</option>
+        <option value="mes_atual" selected>Mês atual</option>
+        <option value="mes_passado">Mês passado</option>
+        <option value="personalizado">Personalizado</option>
+      </select>
+      <div class="filter-row hidden" id="relatorioPersonalizadoRow" style="margin-top:10px;">
+        <div>
+          <label class="field-label">De</label>
+          <input type="date" id="relatorioDataInicio">
+        </div>
+        <div>
+          <label class="field-label">Até</label>
+          <input type="date" id="relatorioDataFim">
+        </div>
+      </div>
+      <button class="save-btn" id="btnGerarRelatorio" style="margin-top:14px;">Gerar relatório</button>
+      <button class="save-btn" id="btnImprimirRelatorio" style="margin-top:8px; background:var(--cinza-borda); color:var(--texto);">Imprimir / salvar em PDF</button>
+    </div>
+    <div id="relatorioGeralBody" style="margin-top:20px;"></div>
   </section>
 
 </main>

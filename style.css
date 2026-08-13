@@ -445,6 +445,7 @@ textarea { resize: vertical; min-height: 70px; }
   margin-bottom: 14px;
 }
 .filter-row > * { flex: 1; min-width: 160px; }
+.filter-row.hidden { display: none; }
 
 .cargo-badge {
   display: inline-block;
@@ -622,4 +623,13 @@ textarea { resize: vertical; min-height: 70px; }
   justify-content: space-between;
   align-items: center;
   gap: 10px;
+}
+
+/* Relatórios: impressão / salvar em PDF */
+@media print {
+  .topbar, .no-print, #loadingOverlay { display: none !important; }
+  body { background: var(--branco); }
+  .container { padding: 0; }
+  .module.hidden { display: none !important; }
+  .rank-row, .stat-box, .bar-row { break-inside: avoid; }
 }
