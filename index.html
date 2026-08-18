@@ -199,10 +199,13 @@
 
     <section class="tab-panel hidden" id="sub-ranking">
       <h2>Ranking de prospecção</h2>
-      <div class="filter-row">
+      <div class="filter-row no-print">
         <input type="month" id="mesRanking">
+        <button class="save-btn" id="btnRelatorioProspeccaoPDF" type="button">Emitir relatório em PDF</button>
       </div>
       <div id="rankingBody"></div>
+      <h3 style="margin-top:24px;">Detalhamento dos clientes prospectados</h3>
+      <div id="rankingDetalheBody"></div>
     </section>
 
   </section>
@@ -246,10 +249,13 @@
     <section class="tab-panel hidden" id="prod-ranking">
       <h2>Ranking de vendas</h2>
       <p class="muted">Pontuação total no mês, somando os pontos de cada produto vendido por funcionário.</p>
-      <div class="filter-row">
+      <div class="filter-row no-print">
         <input type="month" id="mesRankingProdutos">
+        <button class="save-btn" id="btnRelatorioProdutosPDF" type="button">Emitir relatório em PDF</button>
       </div>
       <div id="rankingProdutosBody"></div>
+      <h3 style="margin-top:24px;">Detalhamento de produtos vendidos por funcionário</h3>
+      <div id="rankingProdutosDetalheBody"></div>
     </section>
 
   </section>
@@ -279,6 +285,9 @@
   <section class="module hidden" id="module-comissoes">
     <h2>Comissões da equipe</h2>
     <p class="muted">R$ 30 por contrato assinado (Correios) e R$ 35 para quem liderar o ranking de pontos de produtos de terceiros a cada mês.</p>
+    <div class="filter-row">
+      <input type="month" id="mesComissoes">
+    </div>
     <div id="comissoesBody"></div>
   </section>
 

@@ -1033,6 +1033,30 @@ function renderRankingInner() {
   }
 
   document.getElementById('rankingBody').innerHTML = html;
+
+  const funcById = {};
+  funcionarios.forEach(f => { funcById[f.id] = f; });
+  let detalheHtml = '';
+  if (leadsProspectadosNoMes.length === 0) {
+    detalheHtml = '<div class="empty-state">Nenhum cliente prospectado neste mês.</div>';
+  } else {
+    const leadsOrdenados = [...leadsProspectadosNoMes].sort((a, b) => (a.razaoSocial || '').localeCompare(b.razaoSocial || ''));
+    detalheHtml = leadsOrdenados.map(l => {
+      const func = funcById[l.funcionarioId];
+      return `
+        <div class="rank-row">
+          <div class="rank-info">
+            <div class="rank-name">${escapeHtml(l.razaoSocial)}</div>
+            <div class="rank-cargo">Responsável: ${func ? escapeHtml(func.nome) : 'N/A'}</div>
+          </div>
+          <div>
+            <div class="rank-count-lbl">${escapeHtml(etapaLabel(l.etapa))}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+  document.getElementById('rankingDetalheBody').innerHTML = detalheHtml;
 }
 
 /* ===================================================================
@@ -1313,6 +1337,7 @@ function renderRankingProdutosInner() {
   const funcionarios = loadFuncionarios();
 
   const porFuncionario = {};
+  const porFuncionarioProduto = {};
   let totalPontosGeral = 0;
   let totalItensGeral = 0;
   vendas.forEach(v => {
@@ -1323,6 +1348,12 @@ function renderRankingProdutosInner() {
     if (!porFuncionario[v.funcionarioId]) porFuncionario[v.funcionarioId] = { pontos: 0, itens: 0 };
     porFuncionario[v.funcionarioId].pontos += pontos;
     porFuncionario[v.funcionarioId].itens += itens;
+
+    if (!porFuncionarioProduto[v.funcionarioId]) porFuncionarioProduto[v.funcionarioId] = {};
+    Object.entries(v.itens || {}).forEach(([prodId, qty]) => {
+      if (!qty) return;
+      porFuncionarioProduto[v.funcionarioId][prodId] = (porFuncionarioProduto[v.funcionarioId][prodId] || 0) + qty;
+    });
   });
 
   const ranking = funcionarios
@@ -1361,6 +1392,32 @@ function renderRankingProdutosInner() {
   }
 
   document.getElementById('rankingProdutosBody').innerHTML = html;
+
+  let detalheHtml = '';
+  if (ranking.length === 0) {
+    detalheHtml = '<div class="empty-state">Nenhuma venda registrada neste mês.</div>';
+  } else {
+    detalheHtml = ranking.map(r => {
+      const produtosFunc = porFuncionarioProduto[r.funcionario.id] || {};
+      const linhas = Object.entries(produtosFunc)
+        .filter(([, qty]) => qty > 0)
+        .map(([prodId, qty]) => {
+          const p = produtoById(prodId);
+          const nome = p ? p.nome : prodId;
+          return `${escapeHtml(nome)}: ${qty} un.`;
+        })
+        .join(' · ');
+      return `
+        <div class="rank-row">
+          <div class="rank-info">
+            <div class="rank-name">${escapeHtml(r.funcionario.nome)}</div>
+            ${linhas ? `<div class="meta-line">${linhas}</div>` : '<div class="meta-line">Nenhum produto vendido neste mês.</div>'}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+  document.getElementById('rankingProdutosDetalheBody').innerHTML = detalheHtml;
 }
 
 /* ===================================================================
@@ -1524,7 +1581,7 @@ function formatBRL(valor) {
   return (valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-function calcularComissoes() {
+function calcularComissoes(mes) {
   const funcionarios = loadFuncionarios();
   const leads = loadLeads();
   const vendas = loadVendas();
@@ -1535,6 +1592,7 @@ function calcularComissoes() {
   const clientesPostagemPorFuncionario = {};
   leads.forEach(l => {
     (l.historico || []).forEach(h => {
+      if (!h.data || !h.data.startsWith(mes)) return;
       if (h.etapa === 'contrato_assinado') {
         contratosPorFuncionario[l.funcionarioId] = (contratosPorFuncionario[l.funcionarioId] || 0) + 1;
         (clientesContratoPorFuncionario[l.funcionarioId] = clientesContratoPorFuncionario[l.funcionarioId] || []).push(l.razaoSocial);
@@ -1546,32 +1604,30 @@ function calcularComissoes() {
     });
   });
 
-  // Para cada mês com vendas registradas, quem liderou o ranking de pontos ganha a comissão daquele mês.
+  // Quem liderar o ranking de pontos de produtos NESTE mês ganha a comissão do mês.
   // Em caso de empate no topo, a comissão do mês é dividida entre os líderes empatados.
-  const mesesComVenda = [...new Set(vendas.map(v => (v.data || '').slice(0, 7)).filter(Boolean))];
   const comissaoProdutosPorFuncionario = {};
-  const mesesLideradosPorFuncionario = {};
-  mesesComVenda.forEach(mes => {
-    const porFunc = {};
-    vendas.filter(v => v.data && v.data.startsWith(mes)).forEach(v => {
-      if (!porFunc[v.funcionarioId]) porFunc[v.funcionarioId] = 0;
-      porFunc[v.funcionarioId] += vendaTotalPontos(v);
-    });
-    const entries = Object.entries(porFunc).filter(([, pontos]) => pontos > 0);
-    if (entries.length === 0) return;
+  const lideresProdutosDoMes = [];
+  const porFuncProdutos = {};
+  vendas.filter(v => v.data && v.data.startsWith(mes)).forEach(v => {
+    if (!porFuncProdutos[v.funcionarioId]) porFuncProdutos[v.funcionarioId] = 0;
+    porFuncProdutos[v.funcionarioId] += vendaTotalPontos(v);
+  });
+  const entries = Object.entries(porFuncProdutos).filter(([, pontos]) => pontos > 0);
+  if (entries.length > 0) {
     const maxPontos = Math.max(...entries.map(([, pontos]) => pontos));
     const lideres = entries.filter(([, pontos]) => pontos === maxPontos).map(([id]) => id);
     const comissaoPorLider = COMISSAO_LIDER_PRODUTOS_VALOR / lideres.length;
     lideres.forEach(id => {
-      comissaoProdutosPorFuncionario[id] = (comissaoProdutosPorFuncionario[id] || 0) + comissaoPorLider;
-      mesesLideradosPorFuncionario[id] = (mesesLideradosPorFuncionario[id] || 0) + 1;
+      comissaoProdutosPorFuncionario[id] = comissaoPorLider;
+      lideresProdutosDoMes.push(id);
     });
-  });
+  }
 
   return funcionarios.map(f => {
     const contratos = contratosPorFuncionario[f.id] || 0;
     const postagens = postagensPorFuncionario[f.id] || 0;
-    const mesesLiderados = mesesLideradosPorFuncionario[f.id] || 0;
+    const liderProdutos = lideresProdutosDoMes.includes(f.id);
     const comissaoContratos = contratos * COMISSAO_CONTRATO_VALOR;
     const comissaoPostagens = postagens * COMISSAO_CONTRATO_VALOR;
     const comissaoProdutos = comissaoProdutosPorFuncionario[f.id] || 0;
@@ -1579,7 +1635,7 @@ function calcularComissoes() {
       funcionario: f,
       contratos,
       postagens,
-      mesesLiderados,
+      liderProdutos,
       comissaoContratos,
       comissaoPostagens,
       comissaoProdutos,
@@ -1593,7 +1649,18 @@ function calcularComissoes() {
 }
 
 function renderComissoes() {
-  const dados = calcularComissoes();
+  const mesInput = document.getElementById('mesComissoes');
+  if (!mesInput.value) {
+    const d = new Date();
+    mesInput.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+  mesInput.onchange = renderComissoesInner;
+  renderComissoesInner();
+}
+
+function renderComissoesInner() {
+  const mes = document.getElementById('mesComissoes').value;
+  const dados = calcularComissoes(mes);
   const totalContratos = dados.reduce((s, r) => s + r.comissaoContratos, 0);
   const totalPostagens = dados.reduce((s, r) => s + r.comissaoPostagens, 0);
   const totalProdutos = dados.reduce((s, r) => s + r.comissaoProdutos, 0);
@@ -1601,7 +1668,7 @@ function renderComissoes() {
 
   let html = `
     <div class="stat-grid">
-      <div class="stat-box"><div class="num" style="color:var(--verde)">${formatBRL(totalGeral)}</div><div class="lbl">Comissão total da equipe</div></div>
+      <div class="stat-box"><div class="num" style="color:var(--verde)">${formatBRL(totalGeral)}</div><div class="lbl">Comissão total da equipe no mês</div></div>
       <div class="stat-box"><div class="num">${formatBRL(totalContratos)}</div><div class="lbl">De contratos assinados</div></div>
       <div class="stat-box"><div class="num">${formatBRL(totalPostagens)}</div><div class="lbl">De clientes postando na AGF</div></div>
       <div class="stat-box"><div class="num">${formatBRL(totalProdutos)}</div><div class="lbl">De liderança em produtos</div></div>
@@ -1609,7 +1676,7 @@ function renderComissoes() {
   `;
 
   if (dados.length === 0) {
-    html += '<div class="empty-state">Nenhuma comissão registrada ainda.</div>';
+    html += '<div class="empty-state">Nenhuma comissão registrada neste mês.</div>';
   } else {
     const medals = ['🥇', '🥈', '🥉'];
     html += dados.map((r, i) => `
@@ -1617,13 +1684,13 @@ function renderComissoes() {
         <div class="rank-pos">${medals[i] || (i + 1)}</div>
         <div class="rank-info">
           <div class="rank-name">${escapeHtml(r.funcionario.nome)}</div>
-          <div class="rank-cargo">${escapeHtml(r.funcionario.cargo)} · ${r.contratos} contrato(s) assinado(s) · ${r.postagens} cliente(s) postando na AGF · ${r.mesesLiderados} mês(es) líder em produtos</div>
+          <div class="rank-cargo">${escapeHtml(r.funcionario.cargo)} · ${r.contratos} contrato(s) assinado(s) · ${r.postagens} cliente(s) postando na AGF${r.liderProdutos ? ' · líder em produtos no mês' : ''}</div>
           ${r.clientesContrato.length > 0 ? `<div class="meta-line">Contratos assinados: ${r.clientesContrato.map(escapeHtml).join(', ')}</div>` : ''}
           ${r.clientesPostagem.length > 0 ? `<div class="meta-line">Começaram a postar na AGF: ${r.clientesPostagem.map(escapeHtml).join(', ')}</div>` : ''}
         </div>
         <div>
           <div class="rank-count" style="color:var(--verde)">${formatBRL(r.total)}</div>
-          <div class="rank-count-lbl">comissão total</div>
+          <div class="rank-count-lbl">comissão no mês</div>
         </div>
       </div>
     `).join('');
@@ -1688,6 +1755,8 @@ document.getElementById('relatorioTipoPeriodo').addEventListener('change', () =>
 });
 document.getElementById('btnGerarRelatorio').addEventListener('click', renderRelatorioGeral);
 document.getElementById('btnImprimirRelatorio').addEventListener('click', () => window.print());
+document.getElementById('btnRelatorioProspeccaoPDF').addEventListener('click', () => window.print());
+document.getElementById('btnRelatorioProdutosPDF').addEventListener('click', () => window.print());
 
 function renderRelatorioGeral() {
   const inicio = document.getElementById('relatorioDataInicio').value;
