@@ -509,6 +509,30 @@ textarea { resize: vertical; min-height: 70px; }
   min-width: 140px;
 }
 
+/* Faturamento do 1º mês (comissão de 5%) */
+.faturamento-box {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--cinza-borda);
+  border-radius: 8px;
+  background: #fffaf0;
+  border: 1px solid var(--amarelo);
+}
+.faturamento-box-header {
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.faturamento-box .lead-etapa-control {
+  margin-top: 8px;
+  padding-top: 8px;
+}
+.faturamento-box input[type=number] {
+  width: auto;
+  flex: 1;
+  min-width: 160px;
+}
+
 /* Ranking */
 .rank-row {
   display: flex;
@@ -623,6 +647,106 @@ textarea { resize: vertical; min-height: 70px; }
   justify-content: space-between;
   align-items: center;
   gap: 10px;
+}
+
+.curso-chave-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.curso-chave-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.curso-chave-valor {
+  font-family: 'SF Mono', 'Courier New', monospace;
+  font-weight: 700;
+  letter-spacing: .04em;
+  background: var(--cinza-bg);
+  border: 1px solid var(--cinza-borda);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
+/* Bônus de Sexta (Heineken) */
+.sexta-card {
+  background: var(--branco);
+  border: 1px solid var(--cinza-borda);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+
+.sexta-card-ganhou {
+  border: 1px solid #00843d;
+  background: linear-gradient(135deg, #f0faf3 0%, #ffffff 60%);
+}
+
+.sexta-card-futura {
+  opacity: .7;
+  border-style: dashed;
+}
+
+.sexta-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 700;
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+
+.sexta-card-badge {
+  background: #00843d;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.sexta-vazio {
+  color: var(--texto-suave);
+  font-size: 13px;
+  font-style: italic;
+}
+
+.sexta-vencedores {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sexta-vencedor {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff9e6;
+  border: 1px solid var(--amarelo);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.sexta-vencedor-icone {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.sexta-vencedor-nome {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.sexta-vencedor-produtos {
+  font-size: 12px;
+  color: var(--texto-suave);
 }
 
 /* Relatórios: impressão / salvar em PDF */

@@ -36,7 +36,9 @@ create table if not exists leads (
   etapa text not null default 'prospeccao',
   tem_contrato boolean not null default false,
   historico jsonb not null default '[]',
-  criado_em date not null default current_date
+  criado_em date not null default current_date,
+  faturamento_contrato numeric,
+  faturamento_postagem numeric
 );
 
 -- Vendas de produtos de terceiros
@@ -75,3 +77,9 @@ create policy "acesso total anon" on leads for all using (true) with check (true
 create policy "acesso total anon" on vendas for all using (true) with check (true);
 create policy "acesso total anon" on metas for all using (true) with check (true);
 create policy "acesso total anon" on cursos_progresso for all using (true) with check (true);
+
+-- Migração: comissão de 5% sobre o faturamento do 1º mês do cliente prospectado.
+-- Se a tabela "leads" já existir no seu banco (produção), rode só este bloco abaixo
+-- no SQL Editor do Supabase para adicionar as duas colunas novas sem perder dados:
+alter table leads add column if not exists faturamento_contrato numeric;
+alter table leads add column if not exists faturamento_postagem numeric;

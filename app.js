@@ -691,7 +691,9 @@ function leadsToRows(list) {
     etapa: l.etapa,
     tem_contrato: !!l.temContrato,
     historico: l.historico || [],
-    criado_em: l.criadoEm
+    criado_em: l.criadoEm,
+    faturamento_contrato: (l.faturamentoContrato != null && l.faturamentoContrato !== '') ? l.faturamentoContrato : null,
+    faturamento_postagem: (l.faturamentoPostagem != null && l.faturamentoPostagem !== '') ? l.faturamentoPostagem : null
   }));
 }
 function rowsToLeads(rows) {
@@ -706,8 +708,50 @@ function rowsToLeads(rows) {
     etapa: r.etapa,
     temContrato: !!r.tem_contrato,
     historico: r.historico || [],
-    criadoEm: r.criado_em
+    criadoEm: r.criado_em,
+    faturamentoContrato: r.faturamento_contrato != null ? r.faturamento_contrato : null,
+    faturamentoPostagem: r.faturamento_postagem != null ? r.faturamento_postagem : null
   }));
+}
+
+/* Faturamento do 1º mês (comissão de 5%): a data inicial é a data em que o lead
+   chegou na etapa terminal do seu fluxo (contrato assinado OU começou a postar na AGF).
+   O valor só costuma ser lançado depois de 30 dias, mas o campo fica sempre disponível. */
+function dataInicialFaturamento(lead) {
+  if (lead.etapa === 'contrato_assinado') {
+    const h = (lead.historico || []).find(x => x.etapa === 'contrato_assinado');
+    return h ? h.data : null;
+  }
+  if (lead.etapa === 'postando_agf') {
+    const h = (lead.historico || []).find(x => x.etapa === 'postando_agf');
+    return h ? h.data : null;
+  }
+  return null;
+}
+function addDias(dataStr, dias) {
+  const d = parseDate(dataStr);
+  d.setDate(d.getDate() + dias);
+  return formatDate(d);
+}
+function renderFaturamentoBox(l) {
+  const dataInicial = dataInicialFaturamento(l);
+  if (!dataInicial) return '';
+  const campo = l.etapa === 'contrato_assinado' ? 'faturamentoContrato' : 'faturamentoPostagem';
+  const valor = l[campo];
+  const dataLiberacao = addDias(dataInicial, 30);
+  const disponivel = todayStr() >= dataLiberacao;
+  return `
+    <div class="faturamento-box">
+      <div class="faturamento-box-header">💰 Comissão de 5% sobre o faturamento do 1º mês</div>
+      <div class="meta-line">Data inicial (${l.etapa === 'contrato_assinado' ? 'contrato assinado' : 'começou a postar na AGF'}): <strong>${formatDateBR(dataInicial)}</strong></div>
+      <div class="meta-line">${disponivel ? 'Já pode lançar o faturamento do 1º mês.' : `Lançar o faturamento a partir de ${formatDateBR(dataLiberacao)} (30 dias após a data inicial).`}</div>
+      ${(valor != null && valor !== '') ? `<div class="meta-line">Faturamento informado: <strong>${formatBRL(valor)}</strong> · comissão de 5%: <strong>${formatBRL(valor * 0.05)}</strong></div>` : ''}
+      <div class="lead-etapa-control">
+        <input type="number" step="0.01" min="0" class="leadFaturamentoInput" data-id="${l.id}" data-campo="${campo}" placeholder="Faturamento do 1º mês (R$)" value="${(valor != null && valor !== '') ? valor : ''}">
+        <button class="small-btn" data-action="salvar-faturamento" data-id="${l.id}" data-campo="${campo}">Salvar faturamento</button>
+      </div>
+    </div>
+  `;
 }
 
 const PROSP_TABS = ['leads', 'novolead', 'ranking'];
@@ -854,6 +898,7 @@ function renderLeadsListInner() {
         <input type="date" class="leadEtapaDate" data-id="${l.id}" value="${todayStr()}">
         <button class="small-btn" data-action="atualizar-etapa" data-id="${l.id}">Atualizar etapa</button>
       </div>
+      ${renderFaturamentoBox(l)}
       <div style="margin-top:8px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
         ${l.temContrato ? '' : `<button class="small-btn whatsapp-btn" data-action="enviar-whatsapp" data-id="${l.id}">Enviar para o Guilherme (WhatsApp)</button>`}
         <button class="small-btn" data-action="editar-lead" data-id="${l.id}">Editar</button>
@@ -942,6 +987,20 @@ function renderLeadsListInner() {
     btn.addEventListener('click', () => {
       if (!confirm('Excluir este lead? Esta ação não pode ser desfeita.')) return;
       const list = loadLeads().filter(x => x.id !== btn.dataset.id);
+      saveLeads(list);
+      renderLeadsListInner();
+    });
+  });
+  container.querySelectorAll('[data-action="salvar-faturamento"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      const campo = btn.dataset.campo;
+      const input = container.querySelector(`.leadFaturamentoInput[data-id="${id}"][data-campo="${campo}"]`);
+      const valor = parseFloat((input.value || '').replace(',', '.'));
+      if (isNaN(valor) || valor < 0) { alert('Informe um valor de faturamento válido.'); return; }
+      const list = loadLeads();
+      const lead = list.find(x => x.id === id);
+      lead[campo] = valor;
       saveLeads(list);
       renderLeadsListInner();
     });
@@ -1108,7 +1167,7 @@ function vendaTotalItens(venda) {
   return Object.values(venda.itens || {}).reduce((sum, qty) => sum + qty, 0);
 }
 
-const PROD_TABS = ['registrar', 'metas', 'vendasmes', 'ranking'];
+const PROD_TABS = ['registrar', 'metas', 'vendasmes', 'ranking', 'sextabonus'];
 let currentProdTab = 'registrar';
 document.getElementById('tabsProdutos').addEventListener('click', (e) => {
   const btn = e.target.closest('.tab-btn');
@@ -1126,6 +1185,7 @@ function activateProdutosTab(name) {
   if (name === 'metas') renderMetas();
   if (name === 'vendasmes') renderVendasMes();
   if (name === 'ranking') renderRankingProdutos();
+  if (name === 'sextabonus') renderSextaBonus();
 }
 
 /* ===== Aba: Registrar vendas do dia ===== */
@@ -1420,6 +1480,104 @@ function renderRankingProdutosInner() {
   document.getElementById('rankingProdutosDetalheBody').innerHTML = detalheHtml;
 }
 
+/* ===== Aba: Bônus de Sexta (Heineken) ===== */
+const PRODUTOS_BONUS_SEXTA = ['jequiti', 'seguro', 'plano_odontologico', 'chip_correios_celular'];
+
+function renderSextaBonus() {
+  const mesInput = document.getElementById('mesSextaBonus');
+  if (!mesInput.value) {
+    const d = new Date();
+    mesInput.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+  mesInput.onchange = renderSextaBonusInner;
+  renderSextaBonusInner();
+}
+
+function renderSextaBonusInner() {
+  const mes = document.getElementById('mesSextaBonus').value;
+  const [ano, mesNum] = mes.split('-').map(Number);
+  const diasNoMes = new Date(ano, mesNum, 0).getDate();
+
+  const sextas = [];
+  for (let dia = 1; dia <= diasNoMes; dia++) {
+    const d = new Date(ano, mesNum - 1, dia);
+    if (d.getDay() === 5) sextas.push(formatDate(d));
+  }
+
+  const vendas = loadVendas();
+  const funcionarios = loadFuncionarios();
+  const hoje = todayStr();
+
+  if (sextas.length === 0) {
+    document.getElementById('sextaBonusBody').innerHTML = '<div class="empty-state">Nenhuma sexta-feira neste mês.</div>';
+    return;
+  }
+
+  let totalLatoes = 0;
+
+  const cardsHtml = sextas.map(sexta => {
+    const vendasDoDia = vendas.filter(v => v.data === sexta);
+    const vencedoresMap = {};
+    vendasDoDia.forEach(v => {
+      Object.entries(v.itens || {}).forEach(([prodId, qty]) => {
+        if (!qty || !PRODUTOS_BONUS_SEXTA.includes(prodId)) return;
+        if (!vencedoresMap[v.funcionarioId]) vencedoresMap[v.funcionarioId] = new Set();
+        vencedoresMap[v.funcionarioId].add(prodId);
+      });
+    });
+
+    const vencedores = Object.entries(vencedoresMap).map(([funcId, prodsSet]) => {
+      const func = funcionarios.find(f => f.id === funcId);
+      const nomes = Array.from(prodsSet).map(pid => {
+        const p = produtoById(pid);
+        return p ? p.nome : pid;
+      });
+      return { nome: func ? func.nome : 'Ex-funcionário', produtos: nomes };
+    }).sort((a, b) => a.nome.localeCompare(b.nome));
+
+    totalLatoes += vencedores.length;
+
+    const futura = sexta > hoje;
+    const dataBr = formatDateBR(sexta);
+
+    let corpo;
+    if (futura) {
+      corpo = `<div class="sexta-vazio">⏳ Essa sexta ainda vai chegar... quem vai beber Heineken?</div>`;
+    } else if (vencedores.length === 0) {
+      corpo = `<div class="sexta-vazio">😅 Ninguém vendeu chip, Jequiti, seguro ou plano odontológico. A Heineken ficou geladinha esperando!</div>`;
+    } else {
+      corpo = `<div class="sexta-vencedores">` + vencedores.map(v => `
+        <div class="sexta-vencedor">
+          <span class="sexta-vencedor-icone">🍺</span>
+          <div>
+            <div class="sexta-vencedor-nome">${escapeHtml(v.nome)}</div>
+            <div class="sexta-vencedor-produtos">${escapeHtml(v.produtos.join(' · '))}</div>
+          </div>
+        </div>
+      `).join('') + `</div>`;
+    }
+
+    return `
+      <div class="sexta-card ${futura ? 'sexta-card-futura' : (vencedores.length ? 'sexta-card-ganhou' : '')}">
+        <div class="sexta-card-header">
+          <span>🎉 Sexta, ${escapeHtml(dataBr)}</span>
+          ${!futura && vencedores.length ? `<span class="sexta-card-badge">${vencedores.length} latão(ões)</span>` : ''}
+        </div>
+        ${corpo}
+      </div>
+    `;
+  }).join('');
+
+  const resumoHtml = `
+    <div class="stat-grid">
+      <div class="stat-box"><div class="num" style="color:var(--verde)">${totalLatoes}</div><div class="lbl">Latões de Heineken no mês 🍺</div></div>
+      <div class="stat-box"><div class="num">${sextas.length}</div><div class="lbl">Sexta(s) no mês</div></div>
+    </div>
+  `;
+
+  document.getElementById('sextaBonusBody').innerHTML = resumoHtml + cardsHtml;
+}
+
 /* ===================================================================
    MÓDULO: CURSOS OBRIGATÓRIOS (progresso de capacitação por funcionário)
    =================================================================== */
@@ -1447,7 +1605,7 @@ function cursosDoCargo(cargo) {
   return CURSOS_POR_CARGO[cargo] || [];
 }
 
-const CURSO_TABS = ['equipe', 'catalogo'];
+const CURSO_TABS = ['equipe', 'catalogo', 'chaves'];
 let currentCursoTab = 'equipe';
 document.getElementById('tabsCursos').addEventListener('click', (e) => {
   const btn = e.target.closest('.tab-btn');
@@ -1463,6 +1621,7 @@ function activateCursosTab(name) {
   });
   if (name === 'equipe') renderCursosEquipe();
   if (name === 'catalogo') renderCursosCatalogo();
+  if (name === 'chaves') renderCursosChaves();
 }
 
 /* ===== Aba: Progresso da equipe ===== */
@@ -1571,6 +1730,67 @@ function renderCursosCatalogoInner() {
   container.innerHTML = html || '<div class="empty-state">Nenhum curso encontrado.</div>';
 }
 
+/* ===== Aba: Chaves de cursos (consulta da planilha oficial) ===== */
+function renderCursosChaves() {
+  const input = document.getElementById('buscaChaveCurso');
+  input.oninput = renderCursosChavesInner;
+  renderCursosChavesInner();
+}
+
+function renderCursosChavesInner() {
+  const termo = normalizarTexto(document.getElementById('buscaChaveCurso').value.trim());
+  const container = document.getElementById('cursosChavesList');
+
+  const cursos = CURSOS_CHAVES
+    .filter(c => {
+      if (!termo) return true;
+      return normalizarTexto(c.nome).includes(termo) ||
+        normalizarTexto(c.codigo).includes(termo) ||
+        normalizarTexto(c.chave).includes(termo);
+    })
+    .slice()
+    .sort((a, b) => a.nome.localeCompare(b.nome));
+
+  if (cursos.length === 0) {
+    container.innerHTML = '<div class="empty-state">Nenhum curso encontrado para essa busca.</div>';
+    return;
+  }
+
+  container.innerHTML = `<div class="muted" style="margin-bottom:10px;">${cursos.length} curso(s) encontrado(s)</div>` +
+    cursos.map(c => `
+      <div class="li-item curso-chave-item">
+        <div>
+          <div class="li-question">${escapeHtml(c.nome)}</div>
+          <div class="muted" style="font-size:12px;">${escapeHtml(c.codigo)} · ${escapeHtml(c.modalidade)} · ${c.ch}h${c.aplicavel.length ? ' · ' + c.aplicavel.map(escapeHtml).join(', ') : ''}</div>
+        </div>
+        <div class="curso-chave-box">
+          <span class="curso-chave-valor">${escapeHtml(c.chave)}</span>
+          <button class="small-btn" type="button" data-action="copiar-chave" data-chave="${escapeHtml(c.chave)}">Copiar</button>
+        </div>
+      </div>
+    `).join('');
+
+  container.querySelectorAll('[data-action="copiar-chave"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const chave = btn.dataset.chave;
+      navigator.clipboard.writeText(chave).then(() => {
+        const original = btn.textContent;
+        btn.textContent = 'Copiado!';
+        setTimeout(() => { btn.textContent = original; }, 1500);
+      }).catch(() => {
+        alert('Chave: ' + chave);
+      });
+    });
+  });
+}
+
+function normalizarTexto(str) {
+  return String(str || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '');
+}
+
 /* ===================================================================
    MÓDULO: COMISSÕES (contratos assinados + liderança no ranking de produtos)
    =================================================================== */
@@ -1590,16 +1810,33 @@ function calcularComissoes(mes) {
   const postagensPorFuncionario = {};
   const clientesContratoPorFuncionario = {};
   const clientesPostagemPorFuncionario = {};
+  // Comissão de 5% sobre o faturamento do 1º mês (contrato assinado ou começou a postar na AGF).
+  // Conta no mês da data inicial do marco (mesmo que o valor só seja lançado ~30 dias depois).
+  // Essa comissão SOMA com a comissão fixa de R$30 por contrato/postagem acima.
+  const comissaoFaturamentoPorFuncionario = {};
+  const clientesFaturamentoPorFuncionario = {};
   leads.forEach(l => {
     (l.historico || []).forEach(h => {
       if (!h.data || !h.data.startsWith(mes)) return;
       if (h.etapa === 'contrato_assinado') {
         contratosPorFuncionario[l.funcionarioId] = (contratosPorFuncionario[l.funcionarioId] || 0) + 1;
         (clientesContratoPorFuncionario[l.funcionarioId] = clientesContratoPorFuncionario[l.funcionarioId] || []).push(l.razaoSocial);
+        if (l.faturamentoContrato) {
+          const com = l.faturamentoContrato * 0.05;
+          comissaoFaturamentoPorFuncionario[l.funcionarioId] = (comissaoFaturamentoPorFuncionario[l.funcionarioId] || 0) + com;
+          (clientesFaturamentoPorFuncionario[l.funcionarioId] = clientesFaturamentoPorFuncionario[l.funcionarioId] || [])
+            .push(`${l.razaoSocial} (${formatBRL(l.faturamentoContrato)} → ${formatBRL(com)})`);
+        }
       }
       if (h.etapa === 'postando_agf') {
         postagensPorFuncionario[l.funcionarioId] = (postagensPorFuncionario[l.funcionarioId] || 0) + 1;
         (clientesPostagemPorFuncionario[l.funcionarioId] = clientesPostagemPorFuncionario[l.funcionarioId] || []).push(l.razaoSocial);
+        if (l.faturamentoPostagem) {
+          const com = l.faturamentoPostagem * 0.05;
+          comissaoFaturamentoPorFuncionario[l.funcionarioId] = (comissaoFaturamentoPorFuncionario[l.funcionarioId] || 0) + com;
+          (clientesFaturamentoPorFuncionario[l.funcionarioId] = clientesFaturamentoPorFuncionario[l.funcionarioId] || [])
+            .push(`${l.razaoSocial} (${formatBRL(l.faturamentoPostagem)} → ${formatBRL(com)})`);
+        }
       }
     });
   });
@@ -1631,6 +1868,7 @@ function calcularComissoes(mes) {
     const comissaoContratos = contratos * COMISSAO_CONTRATO_VALOR;
     const comissaoPostagens = postagens * COMISSAO_CONTRATO_VALOR;
     const comissaoProdutos = comissaoProdutosPorFuncionario[f.id] || 0;
+    const comissaoFaturamento = comissaoFaturamentoPorFuncionario[f.id] || 0;
     return {
       funcionario: f,
       contratos,
@@ -1639,9 +1877,11 @@ function calcularComissoes(mes) {
       comissaoContratos,
       comissaoPostagens,
       comissaoProdutos,
+      comissaoFaturamento,
       clientesContrato: clientesContratoPorFuncionario[f.id] || [],
       clientesPostagem: clientesPostagemPorFuncionario[f.id] || [],
-      total: comissaoContratos + comissaoPostagens + comissaoProdutos
+      clientesFaturamento: clientesFaturamentoPorFuncionario[f.id] || [],
+      total: comissaoContratos + comissaoPostagens + comissaoProdutos + comissaoFaturamento
     };
   })
   .filter(r => r.total > 0)
@@ -1664,7 +1904,8 @@ function renderComissoesInner() {
   const totalContratos = dados.reduce((s, r) => s + r.comissaoContratos, 0);
   const totalPostagens = dados.reduce((s, r) => s + r.comissaoPostagens, 0);
   const totalProdutos = dados.reduce((s, r) => s + r.comissaoProdutos, 0);
-  const totalGeral = totalContratos + totalPostagens + totalProdutos;
+  const totalFaturamento = dados.reduce((s, r) => s + r.comissaoFaturamento, 0);
+  const totalGeral = totalContratos + totalPostagens + totalProdutos + totalFaturamento;
 
   let html = `
     <div class="stat-grid">
@@ -1672,6 +1913,7 @@ function renderComissoesInner() {
       <div class="stat-box"><div class="num">${formatBRL(totalContratos)}</div><div class="lbl">De contratos assinados</div></div>
       <div class="stat-box"><div class="num">${formatBRL(totalPostagens)}</div><div class="lbl">De clientes postando na AGF</div></div>
       <div class="stat-box"><div class="num">${formatBRL(totalProdutos)}</div><div class="lbl">De liderança em produtos</div></div>
+      <div class="stat-box"><div class="num">${formatBRL(totalFaturamento)}</div><div class="lbl">De 5% sobre faturamento do 1º mês</div></div>
     </div>
   `;
 
@@ -1687,6 +1929,7 @@ function renderComissoesInner() {
           <div class="rank-cargo">${escapeHtml(r.funcionario.cargo)} · ${r.contratos} contrato(s) assinado(s) · ${r.postagens} cliente(s) postando na AGF${r.liderProdutos ? ' · líder em produtos no mês' : ''}</div>
           ${r.clientesContrato.length > 0 ? `<div class="meta-line">Contratos assinados: ${r.clientesContrato.map(escapeHtml).join(', ')}</div>` : ''}
           ${r.clientesPostagem.length > 0 ? `<div class="meta-line">Começaram a postar na AGF: ${r.clientesPostagem.map(escapeHtml).join(', ')}</div>` : ''}
+          ${r.clientesFaturamento.length > 0 ? `<div class="meta-line">5% sobre faturamento do 1º mês: ${r.clientesFaturamento.map(escapeHtml).join(', ')}</div>` : ''}
         </div>
         <div>
           <div class="rank-count" style="color:var(--verde)">${formatBRL(r.total)}</div>

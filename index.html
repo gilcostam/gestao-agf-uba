@@ -53,11 +53,13 @@
     <button class="tab-btn" data-subtab="metas">Metas do mês</button>
     <button class="tab-btn" data-subtab="vendasmes">Vendas do mês</button>
     <button class="tab-btn" data-subtab="ranking">Ranking</button>
+    <button class="tab-btn" data-subtab="sextabonus">🍺 Bônus de Sexta</button>
   </nav>
 
   <nav class="tabs hidden" id="tabsCursos">
     <button class="tab-btn active" data-subtab="equipe">Progresso da equipe</button>
     <button class="tab-btn" data-subtab="catalogo">Cursos por cargo</button>
+    <button class="tab-btn" data-subtab="chaves">Chaves de cursos</button>
   </nav>
 </header>
 
@@ -258,6 +260,15 @@
       <div id="rankingProdutosDetalheBody"></div>
     </section>
 
+    <section class="tab-panel hidden" id="prod-sextabonus">
+      <h2>🍺 Bônus de Sexta</h2>
+      <p class="muted">Toda sexta-feira, quem vender Chip Correios Celular, Jequiti, Seguro ou Plano Odontológico ganha um latão de Heineken!</p>
+      <div class="filter-row">
+        <input type="month" id="mesSextaBonus">
+      </div>
+      <div id="sextaBonusBody"></div>
+    </section>
+
   </section>
 
   <!-- ===== MÓDULO: CURSOS OBRIGATÓRIOS ===== -->
@@ -277,6 +288,15 @@
         </select>
       </div>
       <div id="cursosCatalogoList"></div>
+    </section>
+
+    <section class="tab-panel hidden" id="curso-chaves">
+      <h2>Chaves de cursos</h2>
+      <p class="muted">Chave de acesso de cada curso do Portal de Capacitação (Moodle). Busque pelo nome ou código do curso.</p>
+      <div class="filter-row">
+        <input type="text" id="buscaChaveCurso" placeholder="Buscar curso, código ou chave...">
+      </div>
+      <div id="cursosChavesList"></div>
     </section>
 
   </section>
