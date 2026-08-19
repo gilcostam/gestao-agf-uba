@@ -749,6 +749,39 @@ textarea { resize: vertical; min-height: 70px; }
   color: var(--texto-suave);
 }
 
+.sexta-vencedor-info {
+  flex: 1;
+}
+
+.sexta-vencedor-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--texto-suave);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.sexta-vencedor-check input[type=checkbox] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+/* Comissões: seções separadas (comissão padrão x comissão de 5% sobre faturamento) */
+.comissoes-sec-titulo {
+  margin-top: 24px;
+  margin-bottom: 4px;
+}
+
+.comissoes-sec-titulo-faturamento {
+  padding-top: 16px;
+  border-top: 2px dashed var(--cinza-borda);
+}
+
 /* Relatórios: impressão / salvar em PDF */
 @media print {
   .topbar, .no-print, #loadingOverlay { display: none !important; }

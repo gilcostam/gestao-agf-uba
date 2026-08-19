@@ -63,6 +63,16 @@ create table if not exists cursos_progresso (
   cursos jsonb not null default '{}'
 );
 
+-- Controle de entrega do prêmio do Bônus de Sexta (Heineken) por sexta-feira + funcionário.
+-- id é sempre "AAAA-MM-DD_idDoFuncionario".
+create table if not exists premios_sexta (
+  id text primary key,
+  data date not null,
+  funcionario_id text not null,
+  dado boolean not null default false,
+  atualizado_em timestamptz default now()
+);
+
 -- RLS: acesso aberto (sem login), conforme decidido para este app interno
 alter table verificacoes enable row level security;
 alter table funcionarios enable row level security;
@@ -70,6 +80,7 @@ alter table leads enable row level security;
 alter table vendas enable row level security;
 alter table metas enable row level security;
 alter table cursos_progresso enable row level security;
+alter table premios_sexta enable row level security;
 
 create policy "acesso total anon" on verificacoes for all using (true) with check (true);
 create policy "acesso total anon" on funcionarios for all using (true) with check (true);
@@ -77,9 +88,31 @@ create policy "acesso total anon" on leads for all using (true) with check (true
 create policy "acesso total anon" on vendas for all using (true) with check (true);
 create policy "acesso total anon" on metas for all using (true) with check (true);
 create policy "acesso total anon" on cursos_progresso for all using (true) with check (true);
+create policy "acesso total anon" on premios_sexta for all using (true) with check (true);
 
 -- Migração: comissão de 5% sobre o faturamento do 1º mês do cliente prospectado.
 -- Se a tabela "leads" já existir no seu banco (produção), rode só este bloco abaixo
 -- no SQL Editor do Supabase para adicionar as duas colunas novas sem perder dados:
 alter table leads add column if not exists faturamento_contrato numeric;
 alter table leads add column if not exists faturamento_postagem numeric;
+
+-- Migração: checkbox de "prêmio entregue" no Bônus de Sexta (Heineken).
+-- Se o seu banco (produção) já tiver sido criado antes desta tabela existir, rode só
+-- este bloco abaixo no SQL Editor do Supabase para criá-la sem perder nenhum dado:
+create table if not exists premios_sexta (
+  id text primary key,
+  data date not null,
+  funcionario_id text not null,
+  dado boolean not null default false,
+  atualizado_em timestamptz default now()
+);
+alter table premios_sexta enable row level security;
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where tablename = 'premios_sexta' and policyname = 'acesso total anon'
+  ) then
+    create policy "acesso total anon" on premios_sexta for all using (true) with check (true);
+  end if;
+end $$;

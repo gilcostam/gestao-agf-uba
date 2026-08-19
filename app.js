@@ -1483,6 +1483,34 @@ function renderRankingProdutosInner() {
 /* ===== Aba: Bônus de Sexta (Heineken) ===== */
 const PRODUTOS_BONUS_SEXTA = ['jequiti', 'seguro', 'plano_odontologico', 'chip_correios_celular'];
 
+// Controle de "prêmio já entregue" por sexta-feira + funcionário.
+let _premiosSexta = [];
+function loadPremiosSexta() {
+  return _premiosSexta;
+}
+function savePremiosSexta(list) {
+  _premiosSexta = list;
+  syncFullTable('premios_sexta', premiosSextaToRows(list), 'id');
+}
+function premiosSextaToRows(list) {
+  return list.map(p => ({ id: p.id, data: p.data, funcionario_id: p.funcionarioId, dado: !!p.dado }));
+}
+function rowsToPremiosSexta(rows) {
+  return rows.map(r => ({ id: r.id, data: r.data, funcionarioId: r.funcionario_id, dado: !!r.dado }));
+}
+function premioSextaDado(data, funcionarioId) {
+  const p = loadPremiosSexta().find(x => x.data === data && x.funcionarioId === funcionarioId);
+  return p ? p.dado : false;
+}
+function togglePremioSexta(data, funcionarioId, dado) {
+  const id = `${data}_${funcionarioId}`;
+  const list = loadPremiosSexta().slice();
+  const idx = list.findIndex(x => x.id === id);
+  if (idx >= 0) list[idx] = { ...list[idx], dado };
+  else list.push({ id, data, funcionarioId, dado });
+  savePremiosSexta(list);
+}
+
 function renderSextaBonus() {
   const mesInput = document.getElementById('mesSextaBonus');
   if (!mesInput.value) {
@@ -1514,6 +1542,7 @@ function renderSextaBonusInner() {
   }
 
   let totalLatoes = 0;
+  let totalPendentes = 0;
 
   const cardsHtml = sextas.map(sexta => {
     const vendasDoDia = vendas.filter(v => v.data === sexta);
@@ -1532,7 +1561,7 @@ function renderSextaBonusInner() {
         const p = produtoById(pid);
         return p ? p.nome : pid;
       });
-      return { nome: func ? func.nome : 'Ex-funcionário', produtos: nomes };
+      return { funcId, nome: func ? func.nome : 'Ex-funcionário', produtos: nomes };
     }).sort((a, b) => a.nome.localeCompare(b.nome));
 
     totalLatoes += vencedores.length;
@@ -1546,15 +1575,23 @@ function renderSextaBonusInner() {
     } else if (vencedores.length === 0) {
       corpo = `<div class="sexta-vazio">😅 Ninguém vendeu chip, Jequiti, seguro ou plano odontológico. A Heineken ficou geladinha esperando!</div>`;
     } else {
-      corpo = `<div class="sexta-vencedores">` + vencedores.map(v => `
+      corpo = `<div class="sexta-vencedores">` + vencedores.map(v => {
+        const dado = premioSextaDado(sexta, v.funcId);
+        if (!dado) totalPendentes++;
+        return `
         <div class="sexta-vencedor">
           <span class="sexta-vencedor-icone">🍺</span>
-          <div>
+          <div class="sexta-vencedor-info">
             <div class="sexta-vencedor-nome">${escapeHtml(v.nome)}</div>
             <div class="sexta-vencedor-produtos">${escapeHtml(v.produtos.join(' · '))}</div>
           </div>
+          <label class="sexta-vencedor-check">
+            <input type="checkbox" class="premioSextaCheck" data-data="${sexta}" data-func="${v.funcId}" ${dado ? 'checked' : ''}>
+            Prêmio entregue
+          </label>
         </div>
-      `).join('') + `</div>`;
+      `;
+      }).join('') + `</div>`;
     }
 
     return `
@@ -1572,10 +1609,18 @@ function renderSextaBonusInner() {
     <div class="stat-grid">
       <div class="stat-box"><div class="num" style="color:var(--verde)">${totalLatoes}</div><div class="lbl">Latões de Heineken no mês 🍺</div></div>
       <div class="stat-box"><div class="num">${sextas.length}</div><div class="lbl">Sexta(s) no mês</div></div>
+      <div class="stat-box"><div class="num" style="color:${totalPendentes > 0 ? '#c0392b' : 'var(--verde)'}">${totalPendentes}</div><div class="lbl">Prêmio(s) pendente(s) de entrega</div></div>
     </div>
   `;
 
-  document.getElementById('sextaBonusBody').innerHTML = resumoHtml + cardsHtml;
+  const container = document.getElementById('sextaBonusBody');
+  container.innerHTML = resumoHtml + cardsHtml;
+  container.querySelectorAll('.premioSextaCheck').forEach(chk => {
+    chk.addEventListener('change', () => {
+      togglePremioSexta(chk.dataset.data, chk.dataset.func, chk.checked);
+      renderSextaBonusInner();
+    });
+  });
 }
 
 /* ===================================================================
@@ -1861,14 +1906,16 @@ function calcularComissoes(mes) {
     });
   }
 
-  return funcionarios.map(f => {
+  // Duas listas separadas, com cálculo e prazo de pagamento independentes:
+  // "padrao" = R$30 por contrato/postagem + R$35 de liderança em produtos;
+  // "faturamento" = 5% sobre o faturamento do 1º mês (prazo de pagamento diferente).
+  const padrao = funcionarios.map(f => {
     const contratos = contratosPorFuncionario[f.id] || 0;
     const postagens = postagensPorFuncionario[f.id] || 0;
     const liderProdutos = lideresProdutosDoMes.includes(f.id);
     const comissaoContratos = contratos * COMISSAO_CONTRATO_VALOR;
     const comissaoPostagens = postagens * COMISSAO_CONTRATO_VALOR;
     const comissaoProdutos = comissaoProdutosPorFuncionario[f.id] || 0;
-    const comissaoFaturamento = comissaoFaturamentoPorFuncionario[f.id] || 0;
     return {
       funcionario: f,
       contratos,
@@ -1877,15 +1924,27 @@ function calcularComissoes(mes) {
       comissaoContratos,
       comissaoPostagens,
       comissaoProdutos,
-      comissaoFaturamento,
       clientesContrato: clientesContratoPorFuncionario[f.id] || [],
       clientesPostagem: clientesPostagemPorFuncionario[f.id] || [],
-      clientesFaturamento: clientesFaturamentoPorFuncionario[f.id] || [],
-      total: comissaoContratos + comissaoPostagens + comissaoProdutos + comissaoFaturamento
+      total: comissaoContratos + comissaoPostagens + comissaoProdutos
     };
   })
   .filter(r => r.total > 0)
   .sort((a, b) => b.total - a.total);
+
+  const faturamento = funcionarios.map(f => {
+    const comissaoFaturamento = comissaoFaturamentoPorFuncionario[f.id] || 0;
+    return {
+      funcionario: f,
+      comissaoFaturamento,
+      clientesFaturamento: clientesFaturamentoPorFuncionario[f.id] || [],
+      total: comissaoFaturamento
+    };
+  })
+  .filter(r => r.total > 0)
+  .sort((a, b) => b.total - a.total);
+
+  return { padrao, faturamento };
 }
 
 function renderComissoes() {
@@ -1900,28 +1959,32 @@ function renderComissoes() {
 
 function renderComissoesInner() {
   const mes = document.getElementById('mesComissoes').value;
-  const dados = calcularComissoes(mes);
-  const totalContratos = dados.reduce((s, r) => s + r.comissaoContratos, 0);
-  const totalPostagens = dados.reduce((s, r) => s + r.comissaoPostagens, 0);
-  const totalProdutos = dados.reduce((s, r) => s + r.comissaoProdutos, 0);
-  const totalFaturamento = dados.reduce((s, r) => s + r.comissaoFaturamento, 0);
-  const totalGeral = totalContratos + totalPostagens + totalProdutos + totalFaturamento;
+  const { padrao, faturamento } = calcularComissoes(mes);
 
+  const totalContratos = padrao.reduce((s, r) => s + r.comissaoContratos, 0);
+  const totalPostagens = padrao.reduce((s, r) => s + r.comissaoPostagens, 0);
+  const totalProdutos = padrao.reduce((s, r) => s + r.comissaoProdutos, 0);
+  const totalPadrao = totalContratos + totalPostagens + totalProdutos;
+  const totalFaturamento = faturamento.reduce((s, r) => s + r.total, 0);
+
+  const medals = ['🥇', '🥈', '🥉'];
+
+  // Seção 1: comissão de R$30 por contrato/postagem + R$35 de liderança em produtos.
   let html = `
+    <h3 class="comissoes-sec-titulo">Comissão de contratos e produtos</h3>
+    <p class="muted">R$ 30 por contrato assinado (Correios) e R$ 35 para quem liderar o ranking de pontos de produtos de terceiros a cada mês.</p>
     <div class="stat-grid">
-      <div class="stat-box"><div class="num" style="color:var(--verde)">${formatBRL(totalGeral)}</div><div class="lbl">Comissão total da equipe no mês</div></div>
+      <div class="stat-box"><div class="num" style="color:var(--verde)">${formatBRL(totalPadrao)}</div><div class="lbl">Total do mês</div></div>
       <div class="stat-box"><div class="num">${formatBRL(totalContratos)}</div><div class="lbl">De contratos assinados</div></div>
       <div class="stat-box"><div class="num">${formatBRL(totalPostagens)}</div><div class="lbl">De clientes postando na AGF</div></div>
       <div class="stat-box"><div class="num">${formatBRL(totalProdutos)}</div><div class="lbl">De liderança em produtos</div></div>
-      <div class="stat-box"><div class="num">${formatBRL(totalFaturamento)}</div><div class="lbl">De 5% sobre faturamento do 1º mês</div></div>
     </div>
   `;
 
-  if (dados.length === 0) {
+  if (padrao.length === 0) {
     html += '<div class="empty-state">Nenhuma comissão registrada neste mês.</div>';
   } else {
-    const medals = ['🥇', '🥈', '🥉'];
-    html += dados.map((r, i) => `
+    html += padrao.map((r, i) => `
       <div class="rank-row">
         <div class="rank-pos">${medals[i] || (i + 1)}</div>
         <div class="rank-info">
@@ -1929,6 +1992,33 @@ function renderComissoesInner() {
           <div class="rank-cargo">${escapeHtml(r.funcionario.cargo)} · ${r.contratos} contrato(s) assinado(s) · ${r.postagens} cliente(s) postando na AGF${r.liderProdutos ? ' · líder em produtos no mês' : ''}</div>
           ${r.clientesContrato.length > 0 ? `<div class="meta-line">Contratos assinados: ${r.clientesContrato.map(escapeHtml).join(', ')}</div>` : ''}
           ${r.clientesPostagem.length > 0 ? `<div class="meta-line">Começaram a postar na AGF: ${r.clientesPostagem.map(escapeHtml).join(', ')}</div>` : ''}
+        </div>
+        <div>
+          <div class="rank-count" style="color:var(--verde)">${formatBRL(r.total)}</div>
+          <div class="rank-count-lbl">comissão no mês</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // Seção 2: comissão de 5% sobre faturamento — cálculo e prazo de pagamento à parte.
+  html += `
+    <h3 class="comissoes-sec-titulo comissoes-sec-titulo-faturamento">💰 Comissão de 5% sobre faturamento do 1º mês</h3>
+    <p class="muted">Comissão separada da acima, com prazo de pagamento próprio — normalmente liberada a partir de 30 dias após o contrato assinado ou o início das postagens na AGF.</p>
+    <div class="stat-grid">
+      <div class="stat-box"><div class="num" style="color:var(--verde)">${formatBRL(totalFaturamento)}</div><div class="lbl">Total do mês</div></div>
+    </div>
+  `;
+
+  if (faturamento.length === 0) {
+    html += '<div class="empty-state">Nenhum faturamento lançado neste mês.</div>';
+  } else {
+    html += faturamento.map((r, i) => `
+      <div class="rank-row">
+        <div class="rank-pos">${medals[i] || (i + 1)}</div>
+        <div class="rank-info">
+          <div class="rank-name">${escapeHtml(r.funcionario.nome)}</div>
+          <div class="rank-cargo">${escapeHtml(r.funcionario.cargo)}</div>
           ${r.clientesFaturamento.length > 0 ? `<div class="meta-line">5% sobre faturamento do 1º mês: ${r.clientesFaturamento.map(escapeHtml).join(', ')}</div>` : ''}
         </div>
         <div>
@@ -2198,6 +2288,13 @@ async function fetchAllFromSupabase() {
   const all = [verifRes, funcRes, leadsRes, vendasRes, metasRes, cursosRes];
   const ok = all.every(res => !res.error);
   if (!ok) all.forEach(res => { if (res.error) console.error('Erro ao carregar dados do Supabase:', res.error); });
+
+  // Tabela do Bônus de Sexta é buscada à parte e não entra no "ok" acima: se a
+  // migração dela ainda não tiver sido rodada no Supabase, o resto do app continua
+  // funcionando normalmente (só os check de "prêmio entregue" ficam indisponíveis).
+  const premiosRes = await sb.from('premios_sexta').select('*');
+  if (premiosRes.error) console.error('Erro ao carregar premios_sexta do Supabase (rode a migração pendente):', premiosRes.error);
+
   return {
     ok,
     verificacoes: verifRes.data || [],
@@ -2205,7 +2302,8 @@ async function fetchAllFromSupabase() {
     leads: leadsRes.data || [],
     vendas: vendasRes.data || [],
     metas: metasRes.data || [],
-    cursosProgresso: cursosRes.data || []
+    cursosProgresso: cursosRes.data || [],
+    premiosSexta: premiosRes.data || []
   };
 }
 
@@ -2289,6 +2387,7 @@ async function bootstrap() {
     _metas = legacy.metas;
     _cursosProgresso = legacy.cursosProgresso;
   }
+  _premiosSexta = rowsToPremiosSexta(remote.premiosSexta || []);
 
   document.body.classList.remove('app-loading');
   renderHeader();
