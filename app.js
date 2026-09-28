@@ -978,6 +978,10 @@ function renderLeadsListInner() {
       const list = loadLeads();
       const lead = list.find(x => x.id === id);
       lead.etapa = novaEtapa;
+      // Evita empilhar a mesma etapa duas vezes no histórico (isso duplicava contratos
+      // assinados/postagens nas telas de Comissões, Ranking e Relatórios). Se essa etapa
+      // já tiver um registro, só atualiza a data dele em vez de criar um novo.
+      lead.historico = (lead.historico || []).filter(h => h.etapa !== novaEtapa);
       lead.historico.push({ etapa: novaEtapa, data });
       saveLeads(list);
       renderLeadsListInner();
@@ -1023,14 +1027,15 @@ function renderRankingInner() {
   const leads = loadLeads();
   const funcionarios = loadFuncionarios();
 
+  // find() em vez de contar todo registro do histórico: cada lead conta só 1 vez por
+  // etapa, mesmo que o histórico tenha uma etapa duplicada.
   const assinadosNoMes = [];
   const postagensNoMes = [];
   leads.forEach(l => {
-    (l.historico || []).forEach(h => {
-      if (!h.data || !h.data.startsWith(mes)) return;
-      if (h.etapa === 'contrato_assinado') assinadosNoMes.push({ lead: l, data: h.data });
-      if (h.etapa === 'postando_agf') postagensNoMes.push({ lead: l, data: h.data });
-    });
+    const hContrato = (l.historico || []).find(h => h.etapa === 'contrato_assinado');
+    if (hContrato && hContrato.data && hContrato.data.startsWith(mes)) assinadosNoMes.push({ lead: l, data: hContrato.data });
+    const hPostagem = (l.historico || []).find(h => h.etapa === 'postando_agf');
+    if (hPostagem && hPostagem.data && hPostagem.data.startsWith(mes)) postagensNoMes.push({ lead: l, data: hPostagem.data });
   });
   const totalAssinados = assinadosNoMes.length;
 
@@ -1860,30 +1865,33 @@ function calcularComissoes(mes) {
   // Essa comissão SOMA com a comissão fixa de R$30 por contrato/postagem acima.
   const comissaoFaturamentoPorFuncionario = {};
   const clientesFaturamentoPorFuncionario = {};
+  // Usa find() (primeiro registro daquela etapa no histórico) em vez de contar todo
+  // registro que bater — isso garante que cada lead conte só 1 vez por etapa, mesmo que
+  // o histórico tenha ficado com uma etapa duplicada (ex.: "Atualizar etapa" clicado
+  // duas vezes para o mesmo contrato).
   leads.forEach(l => {
-    (l.historico || []).forEach(h => {
-      if (!h.data || !h.data.startsWith(mes)) return;
-      if (h.etapa === 'contrato_assinado') {
-        contratosPorFuncionario[l.funcionarioId] = (contratosPorFuncionario[l.funcionarioId] || 0) + 1;
-        (clientesContratoPorFuncionario[l.funcionarioId] = clientesContratoPorFuncionario[l.funcionarioId] || []).push(l.razaoSocial);
-        if (l.faturamentoContrato) {
-          const com = l.faturamentoContrato * 0.05;
-          comissaoFaturamentoPorFuncionario[l.funcionarioId] = (comissaoFaturamentoPorFuncionario[l.funcionarioId] || 0) + com;
-          (clientesFaturamentoPorFuncionario[l.funcionarioId] = clientesFaturamentoPorFuncionario[l.funcionarioId] || [])
-            .push(`${l.razaoSocial} (${formatBRL(l.faturamentoContrato)} → ${formatBRL(com)})`);
-        }
+    const hContrato = (l.historico || []).find(h => h.etapa === 'contrato_assinado');
+    if (hContrato && hContrato.data && hContrato.data.startsWith(mes)) {
+      contratosPorFuncionario[l.funcionarioId] = (contratosPorFuncionario[l.funcionarioId] || 0) + 1;
+      (clientesContratoPorFuncionario[l.funcionarioId] = clientesContratoPorFuncionario[l.funcionarioId] || []).push(l.razaoSocial);
+      if (l.faturamentoContrato) {
+        const com = l.faturamentoContrato * 0.05;
+        comissaoFaturamentoPorFuncionario[l.funcionarioId] = (comissaoFaturamentoPorFuncionario[l.funcionarioId] || 0) + com;
+        (clientesFaturamentoPorFuncionario[l.funcionarioId] = clientesFaturamentoPorFuncionario[l.funcionarioId] || [])
+          .push(`${l.razaoSocial} (${formatBRL(l.faturamentoContrato)} → ${formatBRL(com)})`);
       }
-      if (h.etapa === 'postando_agf') {
-        postagensPorFuncionario[l.funcionarioId] = (postagensPorFuncionario[l.funcionarioId] || 0) + 1;
-        (clientesPostagemPorFuncionario[l.funcionarioId] = clientesPostagemPorFuncionario[l.funcionarioId] || []).push(l.razaoSocial);
-        if (l.faturamentoPostagem) {
-          const com = l.faturamentoPostagem * 0.05;
-          comissaoFaturamentoPorFuncionario[l.funcionarioId] = (comissaoFaturamentoPorFuncionario[l.funcionarioId] || 0) + com;
-          (clientesFaturamentoPorFuncionario[l.funcionarioId] = clientesFaturamentoPorFuncionario[l.funcionarioId] || [])
-            .push(`${l.razaoSocial} (${formatBRL(l.faturamentoPostagem)} → ${formatBRL(com)})`);
-        }
+    }
+    const hPostagem = (l.historico || []).find(h => h.etapa === 'postando_agf');
+    if (hPostagem && hPostagem.data && hPostagem.data.startsWith(mes)) {
+      postagensPorFuncionario[l.funcionarioId] = (postagensPorFuncionario[l.funcionarioId] || 0) + 1;
+      (clientesPostagemPorFuncionario[l.funcionarioId] = clientesPostagemPorFuncionario[l.funcionarioId] || []).push(l.razaoSocial);
+      if (l.faturamentoPostagem) {
+        const com = l.faturamentoPostagem * 0.05;
+        comissaoFaturamentoPorFuncionario[l.funcionarioId] = (comissaoFaturamentoPorFuncionario[l.funcionarioId] || 0) + com;
+        (clientesFaturamentoPorFuncionario[l.funcionarioId] = clientesFaturamentoPorFuncionario[l.funcionarioId] || [])
+          .push(`${l.razaoSocial} (${formatBRL(l.faturamentoPostagem)} → ${formatBRL(com)})`);
       }
-    });
+    }
   });
 
   // Quem liderar o ranking de pontos de produtos NESTE mês ganha a comissão do mês.
@@ -2153,14 +2161,15 @@ function renderRelatorioGeral() {
   /* ---- Prospecção ---- */
   const leads = loadLeads();
   const leadsProspectadosNoPeriodo = leads.filter(l => noPeriodo(l.criadoEm));
+  // find() em vez de contar todo registro do histórico: cada lead conta só 1 vez por
+  // etapa, mesmo que o histórico tenha uma etapa duplicada.
   const contratosNoPeriodo = [];
   const postagensNoPeriodo = [];
   leads.forEach(l => {
-    (l.historico || []).forEach(h => {
-      if (!noPeriodo(h.data)) return;
-      if (h.etapa === 'contrato_assinado') contratosNoPeriodo.push(l);
-      if (h.etapa === 'postando_agf') postagensNoPeriodo.push(l);
-    });
+    const hContrato = (l.historico || []).find(h => h.etapa === 'contrato_assinado');
+    if (hContrato && noPeriodo(hContrato.data)) contratosNoPeriodo.push(l);
+    const hPostagem = (l.historico || []).find(h => h.etapa === 'postando_agf');
+    if (hPostagem && noPeriodo(hPostagem.data)) postagensNoPeriodo.push(l);
   });
 
   const vazio = () => ({ prospectados: 0, contratos: 0, postagens: 0, clientesContrato: [], clientesPostagem: [], comissao: 0 });
