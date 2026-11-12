@@ -8,8 +8,8 @@ const CAT_LABELS = {
 };
 
 /* ===== Supabase ===== */
-const SUPABASE_URL = 'https://wxbtuaxieeasnxismotz.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind4YnR1YXhpZWVhc254aXNtb3R6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYwMzk3MjEsImV4cCI6MjEwMTYxNTcyMX0.WV7-_X5SrcCjRc724sj1eQShR7ijhRhjud_8_cl2iOs';
+const SUPABASE_URL = 'https://jurttrrnzrefeoouqmei.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_usJsKe9craCLylEcsyOryg_3LRAfTaS';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const MIGRATION_FLAG = 'sappp_migrated_to_supabase_v1';
 
